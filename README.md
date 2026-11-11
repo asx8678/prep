@@ -410,4 +410,5 @@ like.
 
 ## License
 
-[MIT](LICENSE). You can use, change and share these skills freely, including at work.
+[MIT](LICENSE). Anyone may use, change and share these skills, also at work,
+as long as they keep the copyright and license notice.
