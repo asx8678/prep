@@ -92,7 +92,13 @@ less install-prep.sh
 bash install-prep.sh
 ```
 
-It sets up all three tools at once:
+That sets up Claude Code, Kiro CLI and Pi. To set up only some of them, name
+them: `bash install-prep.sh claude`, or `bash install-prep.sh kiro pi`
+(`--help` lists the names). The real copy always goes to `.agents/skills/`,
+which Pi reads, so Pi can use the skills either way. Naming fewer tools later
+removes nothing, and the notes at the end cover only the tools you named.
+
+With all three, it creates:
 
 ```text
 your-repo/
@@ -443,7 +449,8 @@ the brief-name bug sat between prep and impl. The installer passes 39 checks:
 no git, a subfolder, a second run, upgrades, your edits, copy mode, edited
 copies, copies from older installers, your own links and folders, a worktree,
 Windows line endings and Windows clones. Six more test the throwaway copy and
-the brief names.
+the brief names, and eleven more the choice of tools (`bash install-prep.sh
+claude`, `--help`, an unknown name).
 
 ## Limitations
 

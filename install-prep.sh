@@ -8,15 +8,46 @@
 # Claude Code and Kiro CLI get links to those copies, so there is one file
 # to edit. Running this again updates the skills but keeps a skill file you
 # changed; the new version then waits in .git/prep-install/.
-# Run it from anywhere inside the repository:  bash install-prep.sh
+# Run it from anywhere inside the repository:
+#   bash install-prep.sh               for Claude Code, Kiro CLI and Pi
+#   bash install-prep.sh claude kiro   only for the tools you name
 set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: bash install-prep.sh [claude] [kiro] [pi]
+
+Installs the prep and impl skills into the git repository you are in, for
+the tools you name, or for all three when you name none:
+  claude   Claude Code   links in .claude/skills
+  kiro     Kiro CLI      links in .kiro/skills
+  pi       Pi            reads .agents/skills directly
+The real copy always goes to .agents/skills, so Pi can use the skills
+whichever tools you name. Nothing is ever removed: to stop using a tool,
+delete its folder yourself.
+USAGE
+}
+
+tools=""
+for arg in "$@"; do
+  arg="$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')"
+  case "$arg" in
+    claude|kiro|pi)
+      case " $tools " in *" $arg "*) ;; *) tools="$tools $arg" ;; esac ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown tool: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
+  esac
+done
+[ -n "$tools" ] || tools=" claude kiro pi"
+has() { case " $tools " in *" $1 "*) return 0 ;; esac; return 1; }
 
 if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   echo "Run this inside a git repository: the skills and their briefs belong to one project." >&2
   exit 1
 fi
 cd "$root"
-echo "Installing the prep and impl skills into: $root"
+echo "Installing the prep and impl skills for:$tools"
+echo "Into: $root"
 mkdir -p .briefs .agents/skills
 
 # New versions are written here first. Git never commits this folder.
@@ -728,9 +759,10 @@ link_skill() {
 
 hidden=""
 
-for tool_dir in .claude/skills .kiro/skills; do
+for tool in claude kiro; do
+  has "$tool" || continue
   for name in prep impl; do
-    link_skill "$tool_dir" "$name"
+    link_skill ".$tool/skills" "$name"
   done
 done
 
@@ -747,7 +779,8 @@ else
   echo "The skills still work. They just cannot keep a record of tasks."
 fi
 
-cat <<'NEXT_STEPS'
+# What to do next, only for the tools that were set up.
+cat <<'DONE'
 
 Done. The skills are in .agents/skills/prep and .agents/skills/impl.
 To change one, edit its SKILL.md there; running this again keeps your edits.
@@ -758,26 +791,38 @@ at the end of a /prep.
 
 Use them
                 1. Prepare          2. Start fresh   3. Implement
-  Claude Code   /prep <request>     /clear           /impl
-  Kiro CLI      /prep <request>     /clear           /impl
-  Pi            /skill:prep ...     /new             /skill:impl
+DONE
+if has claude; then echo "  Claude Code   /prep <request>     /clear           /impl"; fi
+if has kiro; then echo "  Kiro CLI      /prep <request>     /clear           /impl"; fi
+if has pi; then echo "  Pi            /skill:prep ...     /new             /skill:impl"; fi
+cat <<'FRESH'
 
   The last sentence of every /prep tells you which way fits. When it
   stayed small, skip step 2: run /impl in the same conversation, or just
   say "go ahead". /impl uses the newest brief; put a file name after the
   command to pick another one.
-
+FRESH
+if has pi || has kiro; then echo; fi
+if has pi; then cat <<'PI_USE'
   Pi            Trust the project (/trust), because Pi loads project
                 skills only after that. If /skill:prep is not suggested,
                 type it anyway; to have it suggested, turn on
                 enableSkillCommands in /settings.
+PI_USE
+fi
+if has kiro; then cat <<'KIRO_USE'
   Kiro CLI      A custom agent needs this line in its "resources":
                 "skill://.kiro/skills/**/SKILL.md"
+KIRO_USE
+fi
+cat <<'GUARD'
 
 Keep /prep from changing your code
   The skill is told to write only in .briefs/ and ~/.briefs/.
   Your tool is what enforces that.
 
+GUARD
+if has claude; then cat <<'CLAUDE_GUARD'
   Claude Code   Since v2.1.283 sessions start in auto mode, where a
                 classifier approves actions instead of you. For /prep,
                 start in Manual mode, which asks before every change, and
@@ -801,6 +846,9 @@ Keep /prep from changing your code
                 and can write files (tests write caches and snapshots).
                 dontAsk also refuses the multiple-choice questions; /prep
                 then asks them as plain text. Use a normal session for /impl.
+CLAUDE_GUARD
+fi
+if has kiro; then cat <<'KIRO_GUARD'
   Kiro CLI v3   It asks before writes and before commands that are not
                 read-only. To stop the prompts for the briefs folders,
                 add these rules to ~/.kiro/settings/permissions.yaml:
@@ -811,13 +859,23 @@ Keep /prep from changing your code
                     - capability: fs_write
                       match: [".briefs/**", "~/.briefs/**"]
                       effect: allow
+KIRO_GUARD
+fi
+if has pi; then cat <<'PI_GUARD'
   Pi            Pi does not ask before it acts. Run "git status" after a
                 /prep. Only .briefs/ should have changed.
+PI_GUARD
+fi
+folders=".agents/"
+if has claude; then folders="$folders, .claude/skills"; fi
+if has kiro; then folders="$folders, .kiro/skills"; fi
+case "$folders" in *", "*) folders="${folders%, *} and ${folders##*, }" ;; esac
+cat <<COMMIT
 
-Commit .agents/, .claude/skills and .kiro/skills so the team gets the
+Commit $folders so the team gets the
 skills, and the briefs in .briefs/ if the team should see them (git shows
 .briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
-NEXT_STEPS
+COMMIT
 
 if [ -n "$hidden" ]; then
   echo
