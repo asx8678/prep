@@ -69,7 +69,7 @@ every claim is checked and the first idea tested before it is recommended.
 
 ## Where things live
 
-- The brief: `.briefs/<YYYY-MM-DD-HHMM>-<type>.md` in the project.
+- The brief: `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md` in the project.
 - The record, in `~/.briefs/`, shared by every project on this computer
   and written only when the person agrees: `log.md` (one line per recorded
   task), `tasks/` (a copy of each recorded brief) and
@@ -99,7 +99,7 @@ this once. It prints the date and time (also to judge how current versions
 and docs are), the full home path, the commit and the dedicated skills:
 
 ```
-date +%Y-%m-%d-%H%M; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
+date +%Y-%m-%d-%H%M%S; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
 ```
 
 Give the request a type name of two or three words, lowercase with hyphens,
@@ -167,12 +167,13 @@ such as a failing test, a local run or a run in a throwaway copy (step 4).
 In a review, also walk the edge cases (a second run, missing input, no git,
 no permission, another OS), and read the parts meant to be read, such as
 docs, prompts and config comments: look for mistakes, for contradictions
-with themselves or the code, and for needless length. For a bug, find the
-root cause: trace the bad value backward to where it starts, compare with
-similar code that works and list every difference, and test one guess at a
-time with the smallest safe check. Keep going until one cause explains every
-symptom. If you cannot confirm the cause, say so, and brief the next
-investigation step instead of a fix.
+with themselves or the code, and for needless length. Where one part's
+output feeds another (a file name, a format, an order), check with a quick
+test that they fit. For a bug, find the root cause: trace the bad value
+backward to where it starts, compare with similar code that works and list
+every difference, and test one guess at a time with the smallest safe check.
+Keep going until one cause explains every symptom. If you cannot confirm the
+cause, say so, and brief the next investigation step instead of a fix.
 
 With a dedicated skill, survey less: confirm its defaults still hold here and
 look only at what differs. With no example to follow or no code yet, say so
@@ -222,15 +223,19 @@ most likely reasons, and plan how the brief prevents or detects each one.
 
 When you are not sure a fix works, try it in a throwaway copy, never in the
 project. This copies the committed files and their uncommitted changes, but
-no untracked or ignored files such as `.env`, and prints where the copy is:
+no untracked or ignored files such as `.env`, cuts the copy's link to the
+project so nothing can be pushed back, and prints where the copy is:
 
 ```
 r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && git clone -q "$r" "$d/try" &&
+git -C "$d/try" remote remove origin &&
 { git -C "$r" diff --quiet HEAD || git -C "$r" diff HEAD --binary | git -C "$d/try" apply; } && echo "$d/try"
 ```
 
 Copy in any untracked file the trial needs. Make the change and run the
 proof there, record what it printed, then delete the folder `mktemp` made.
+If the command fails, for example because the project has no commits yet,
+say that the trial could not run; do not try it in the project instead.
 
 ### 5. Report and ask, in one message
 
@@ -385,11 +390,12 @@ After the reply, do these in order:
    changed lines and end your message; go on after the person's ok.
 4. For B and C, add the record note below to the end of the brief, with the
    project and the type filled in.
-5. Save the brief as `.briefs/<YYYY-MM-DD-HHMM>-<type>.md`, with the date and
-   time from step 1 (if that name is taken, add `-2`).
+5. Save the brief as `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md`, with the date
+   and time from step 1. If that name is taken, use the current time instead,
+   so that the newest brief always sorts last.
 6. For B and C, in one shell command: create `~/.briefs/tasks/` if it is
    missing, `cp` the saved brief there as
-   `<YYYY-MM-DD-HHMM>-<project>-<type>.md`, and append the `briefed` line
+   `<YYYY-MM-DD-HHMMSS>-<project>-<type>.md`, and append the `briefed` line
    with `printf '%s\n' '<line>' >> <log>` (no quotes or backticks in it).
    Check it with `tail -n 1 <log>`; for B, read nothing else in the log.
 7. For C, when this kind of task came up before, offer a dedicated skill as

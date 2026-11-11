@@ -112,9 +112,22 @@ install_skill_file() {
 
 '''
 
-TAIL = r'''# A link where possible. Where links are not available (for example Git Bash
+TAIL = r'''# A copy may be refreshed when its SKILL.md is the same as the source, or
+# unchanged since this installer made it: the marker holds its id then.
+# Older installers left the marker empty; a shipped version counts too.
+copy_unchanged() {
+  local target="$1" name="$2" made now
+  made="$(cat "$target/.installed-copy" 2>/dev/null || true)"
+  now="$(git hash-object "$target/SKILL.md" 2>/dev/null)" || return 1
+  [ "$now" = "$made" ] && return 0
+  [ "$now" = "$(git hash-object ".agents/skills/$name/SKILL.md")" ] && return 0
+  [ -z "$made" ] && printf '%s\n' "$shipped" | grep -qxF "$name $now"
+}
+
+# A link where possible. Where links are not available (for example Git Bash
 # on Windows, where ln -s copies), a marked copy that every run refreshes.
-# Links and folders this installer did not make are left alone.
+# Links and folders this installer did not make are left alone, and so is a
+# copy you changed.
 link_skill() {
   local tool_dir="$1" name="$2"
   local target="$tool_dir/$name" mark=".installed-copy" want="../../.agents/skills/$name"
@@ -127,8 +140,26 @@ link_skill() {
     fi
     return 0
   fi
+  # Without link support (core.symlinks=false, the default on Windows), git
+  # checks out a committed link as a small file that holds its target. Replace
+  # it, and tell git to ignore that local change so it is never committed.
+  if [ -f "$target" ] && [ "$(cat "$target")" = "$want" ]; then
+    rm -f "$target"
+    git update-index --skip-worktree -- "$target" 2>/dev/null || true
+    local exclude; exclude="$(git rev-parse --git-path info/exclude)"
+    mkdir -p "$(dirname "$exclude")"
+    grep -qxF "/$target/" "$exclude" 2>/dev/null || printf '/%s/\n' "$target" >> "$exclude"
+    hidden="$hidden $target"
+  fi
   if [ -e "$target" ] && [ ! -f "$target/$mark" ]; then
     echo "Skipped $target: it already exists and was not made by this installer"
+    return 0
+  fi
+  if [ -e "$target" ] && ! copy_unchanged "$target" "$name"; then
+    kept="$kept $target"
+    echo "Kept $target: you changed this copy, so it was not refreshed."
+    echo "  Copies are made from .agents/skills/$name/SKILL.md: make your change there,"
+    echo "  then delete $target and run this again."
     return 0
   fi
   rm -rf "$target"
@@ -138,10 +169,12 @@ link_skill() {
     rm -rf "$target"
     cp -R ".agents/skills/$name" "$target"
     rm -f "$target/SKILL.md.bak"
-    : > "$target/$mark"
+    git hash-object "$target/SKILL.md" > "$target/$mark"
     echo "Copied to $target (no links here: edit .agents/skills/$name/SKILL.md, then run this again to refresh the copy)"
   fi
 }
+
+hidden=""
 
 for tool_dir in .claude/skills .kiro/skills; do
   for name in prep impl; do
@@ -183,9 +216,9 @@ Use them
   command to pick another one.
 
   Pi            Trust the project (/trust), because Pi loads project
-                skills only after that. If /skill:prep does not
-                appear, turn on skill commands in /settings
-                (enableSkillCommands).
+                skills only after that. If /skill:prep is not suggested,
+                type it anyway; to have it suggested, turn on
+                enableSkillCommands in /settings.
   Kiro CLI      A custom agent needs this line in its "resources":
                 "skill://.kiro/skills/**/SKILL.md"
 
@@ -208,13 +241,14 @@ Keep /prep from changing your code
                                                "Edit(~/.briefs/**)"
                 "/.briefs/**" means .briefs in the folder the session
                 starts in, so it works only from the repository root.
-                For a hard guarantee, use --permission-mode dontAsk: it
-                refuses everything not allowed, so also allow "WebSearch",
-                "WebFetch" and your test and scanner commands (for example
-                "Bash(npm test *)"), or the brief marks those checks
-                UNVERIFIED or UNTESTED. dontAsk also refuses the
-                multiple-choice questions; /prep then asks them as plain
-                text. Use a normal session for /impl.
+                For a stronger guard, use --permission-mode dontAsk: it
+                refuses everything you have not allowed. So also allow
+                "WebSearch", "WebFetch" and your test and scanner commands
+                (for example "Bash(npm test *)"), or the brief marks those
+                checks UNVERIFIED or UNTESTED. What you allow still runs
+                and can write files (tests write caches and snapshots).
+                dontAsk also refuses the multiple-choice questions; /prep
+                then asks them as plain text. Use a normal session for /impl.
   Kiro CLI v3   It asks before writes and before commands that are not
                 read-only. To stop the prompts for the briefs folders,
                 add these rules to ~/.kiro/settings/permissions.yaml:
@@ -233,10 +267,17 @@ skills, and the briefs in .briefs/ if the team should see them (git shows
 .briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
 NEXT_STEPS
 
+if [ -n "$hidden" ]; then
+  echo
+  echo "This clone has no link support, so git checked out these links as small"
+  echo "files:$hidden"
+  echo "They are now copies, and git ignores that local change (skip-worktree and"
+  echo ".git/info/exclude), so it is never committed."
+fi
 if [ -n "$kept" ]; then
   echo
   echo "Not updated, because they have changes of yours:$kept"
-  echo "The new versions are in $stage/. See the messages at the top."
+  echo "See the messages at the top."
 fi
 '''
 

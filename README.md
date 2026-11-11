@@ -92,7 +92,7 @@ less install-prep.sh
 bash install-prep.sh
 ```
 
-It creates:
+It sets up all three tools at once:
 
 ```text
 your-repo/
@@ -124,6 +124,13 @@ Notes:
 - Commit `.agents/`, `.claude/skills` and `.kiro/skills` so your team gets the
   skills, and the briefs in `.briefs/` if the team should see them (git shows
   `.briefs/` only once it holds a brief).
+- A copy you changed (where links are not available) is kept too, with a
+  message: copies are made from `.agents/skills/<name>/SKILL.md`, so change
+  that file instead.
+- On a clone without link support (the default on Windows), git checks out
+  the committed links as small text files. The installer replaces them with
+  copies and tells git to ignore that local change (`skip-worktree` and
+  `.git/info/exclude`), so the copies are never committed over the links.
 - Older versions of the installer kept a changed file as `SKILL.md.bak`. If
   you have one, check it and delete it; the installer points it out.
 
@@ -166,8 +173,8 @@ just `ok` to accept every recommendation.
 Tool notes:
 
 - **Pi:** trust the project with `/trust`, because Pi loads project skills only
-  after that. If `/skill:prep` does not appear, turn on skill commands in
-  `/settings` (`enableSkillCommands`).
+  after that. If `/skill:prep` is not suggested, type it anyway; to have it
+  suggested, turn on `enableSkillCommands` in `/settings`.
 - **Kiro CLI:** a custom agent needs `"skill://.kiro/skills/**/SKILL.md"` in its
   `resources`.
 
@@ -191,7 +198,7 @@ A small, clear task gets short versions of every step.
 ## The brief
 
 Each brief is a Markdown file in `.briefs/`, named
-`<YYYY-MM-DD-HHMM>-<type>.md`, with these sections:
+`<YYYY-MM-DD-HHMMSS>-<type>.md`, with these sections:
 
 | Section | What it holds |
 |---|---|
@@ -313,11 +320,12 @@ answer A. To stop the prompts for the brief folders, add to
 `/.briefs/**` means `.briefs` in the folder where the session starts, so start
 Claude Code in the repository root.
 
-For a hard guarantee during `/prep`, start the session with
-`claude --permission-mode dontAsk`. It refuses everything that is not allowed,
+For a stronger guard during `/prep`, start the session with
+`claude --permission-mode dontAsk`. It refuses everything you have not allowed,
 so also allow `"WebSearch"`, `"WebFetch"` and your test and scanner commands
 (for example `"Bash(npm test *)"`), or the brief marks those checks UNVERIFIED
-or UNTESTED. dontAsk also refuses the multiple-choice questions; `/prep` then
+or UNTESTED. What you allow still runs and can write files, such as the caches
+and snapshots tests write. dontAsk also refuses the multiple-choice questions; `/prep` then
 asks them as plain text. Use a normal session for `/impl`, because it has to
 edit files.
 </details>
@@ -418,9 +426,24 @@ skill text it installs, which the other review did. Both sets of findings are
 fixed: running the installer again keeps your edits, your own links are left
 alone, `/prep` reviews read docs and prompts as well as running the code, its
 throwaway copy includes uncommitted changes, and its before-and-after check
-sees untracked files. The installer passes 27 checks covering these cases: no
-git, a subfolder, a second run, upgrades, your edits, copy mode, your own
-links and folders, a worktree, and Windows line endings.
+sees untracked files.
+
+A fourth round did the same again. The two reviews found different problems,
+and all of them are fixed:
+- a Windows clone got the committed links as text files, and the installer
+  skipped them;
+- a copy you edited was refreshed over your edit;
+- a second brief in the same minute could sort before the first, so `/impl`
+  took the older one (names now include seconds);
+- the throwaway copy could push to your repository (its link is now cut), and
+  failed without a clear message in a repository with no commits.
+
+`/prep` reviews now also check where one part's output feeds another, because
+the brief-name bug sat between prep and impl. The installer passes 39 checks:
+no git, a subfolder, a second run, upgrades, your edits, copy mode, edited
+copies, copies from older installers, your own links and folders, a worktree,
+Windows line endings and Windows clones. Six more test the throwaway copy and
+the brief names.
 
 ## Limitations
 

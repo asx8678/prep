@@ -31,6 +31,7 @@ impl de458369c8fc8ccab0b721f3462b17753786ca74
 prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
 prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
 prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc
+prep e32bea4be892ce9652b44ef24c24b15afb63b3cb
 '
 
 install_skill_file() {
@@ -131,7 +132,7 @@ every claim is checked and the first idea tested before it is recommended.
 
 ## Where things live
 
-- The brief: `.briefs/<YYYY-MM-DD-HHMM>-<type>.md` in the project.
+- The brief: `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md` in the project.
 - The record, in `~/.briefs/`, shared by every project on this computer
   and written only when the person agrees: `log.md` (one line per recorded
   task), `tasks/` (a copy of each recorded brief) and
@@ -161,7 +162,7 @@ this once. It prints the date and time (also to judge how current versions
 and docs are), the full home path, the commit and the dedicated skills:
 
 ```
-date +%Y-%m-%d-%H%M; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
+date +%Y-%m-%d-%H%M%S; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
 ```
 
 Give the request a type name of two or three words, lowercase with hyphens,
@@ -229,12 +230,13 @@ such as a failing test, a local run or a run in a throwaway copy (step 4).
 In a review, also walk the edge cases (a second run, missing input, no git,
 no permission, another OS), and read the parts meant to be read, such as
 docs, prompts and config comments: look for mistakes, for contradictions
-with themselves or the code, and for needless length. For a bug, find the
-root cause: trace the bad value backward to where it starts, compare with
-similar code that works and list every difference, and test one guess at a
-time with the smallest safe check. Keep going until one cause explains every
-symptom. If you cannot confirm the cause, say so, and brief the next
-investigation step instead of a fix.
+with themselves or the code, and for needless length. Where one part's
+output feeds another (a file name, a format, an order), check with a quick
+test that they fit. For a bug, find the root cause: trace the bad value
+backward to where it starts, compare with similar code that works and list
+every difference, and test one guess at a time with the smallest safe check.
+Keep going until one cause explains every symptom. If you cannot confirm the
+cause, say so, and brief the next investigation step instead of a fix.
 
 With a dedicated skill, survey less: confirm its defaults still hold here and
 look only at what differs. With no example to follow or no code yet, say so
@@ -284,15 +286,19 @@ most likely reasons, and plan how the brief prevents or detects each one.
 
 When you are not sure a fix works, try it in a throwaway copy, never in the
 project. This copies the committed files and their uncommitted changes, but
-no untracked or ignored files such as `.env`, and prints where the copy is:
+no untracked or ignored files such as `.env`, cuts the copy's link to the
+project so nothing can be pushed back, and prints where the copy is:
 
 ```
 r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && git clone -q "$r" "$d/try" &&
+git -C "$d/try" remote remove origin &&
 { git -C "$r" diff --quiet HEAD || git -C "$r" diff HEAD --binary | git -C "$d/try" apply; } && echo "$d/try"
 ```
 
 Copy in any untracked file the trial needs. Make the change and run the
 proof there, record what it printed, then delete the folder `mktemp` made.
+If the command fails, for example because the project has no commits yet,
+say that the trial could not run; do not try it in the project instead.
 
 ### 5. Report and ask, in one message
 
@@ -447,11 +453,12 @@ After the reply, do these in order:
    changed lines and end your message; go on after the person's ok.
 4. For B and C, add the record note below to the end of the brief, with the
    project and the type filled in.
-5. Save the brief as `.briefs/<YYYY-MM-DD-HHMM>-<type>.md`, with the date and
-   time from step 1 (if that name is taken, add `-2`).
+5. Save the brief as `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md`, with the date
+   and time from step 1. If that name is taken, use the current time instead,
+   so that the newest brief always sorts last.
 6. For B and C, in one shell command: create `~/.briefs/tasks/` if it is
    missing, `cp` the saved brief there as
-   `<YYYY-MM-DD-HHMM>-<project>-<type>.md`, and append the `briefed` line
+   `<YYYY-MM-DD-HHMMSS>-<project>-<type>.md`, and append the `briefed` line
    with `printf '%s\n' '<line>' >> <log>` (no quotes or backticks in it).
    Check it with `tail -n 1 <log>`; for B, read nothing else in the log.
 7. For C, when this kind of task came up before, offer a dedicated skill as
@@ -657,9 +664,22 @@ their corrections.
 IMPL_SKILL_EOF
 install_skill_file impl
 
+# A copy may be refreshed when its SKILL.md is the same as the source, or
+# unchanged since this installer made it: the marker holds its id then.
+# Older installers left the marker empty; a shipped version counts too.
+copy_unchanged() {
+  local target="$1" name="$2" made now
+  made="$(cat "$target/.installed-copy" 2>/dev/null || true)"
+  now="$(git hash-object "$target/SKILL.md" 2>/dev/null)" || return 1
+  [ "$now" = "$made" ] && return 0
+  [ "$now" = "$(git hash-object ".agents/skills/$name/SKILL.md")" ] && return 0
+  [ -z "$made" ] && printf '%s\n' "$shipped" | grep -qxF "$name $now"
+}
+
 # A link where possible. Where links are not available (for example Git Bash
 # on Windows, where ln -s copies), a marked copy that every run refreshes.
-# Links and folders this installer did not make are left alone.
+# Links and folders this installer did not make are left alone, and so is a
+# copy you changed.
 link_skill() {
   local tool_dir="$1" name="$2"
   local target="$tool_dir/$name" mark=".installed-copy" want="../../.agents/skills/$name"
@@ -672,8 +692,26 @@ link_skill() {
     fi
     return 0
   fi
+  # Without link support (core.symlinks=false, the default on Windows), git
+  # checks out a committed link as a small file that holds its target. Replace
+  # it, and tell git to ignore that local change so it is never committed.
+  if [ -f "$target" ] && [ "$(cat "$target")" = "$want" ]; then
+    rm -f "$target"
+    git update-index --skip-worktree -- "$target" 2>/dev/null || true
+    local exclude; exclude="$(git rev-parse --git-path info/exclude)"
+    mkdir -p "$(dirname "$exclude")"
+    grep -qxF "/$target/" "$exclude" 2>/dev/null || printf '/%s/\n' "$target" >> "$exclude"
+    hidden="$hidden $target"
+  fi
   if [ -e "$target" ] && [ ! -f "$target/$mark" ]; then
     echo "Skipped $target: it already exists and was not made by this installer"
+    return 0
+  fi
+  if [ -e "$target" ] && ! copy_unchanged "$target" "$name"; then
+    kept="$kept $target"
+    echo "Kept $target: you changed this copy, so it was not refreshed."
+    echo "  Copies are made from .agents/skills/$name/SKILL.md: make your change there,"
+    echo "  then delete $target and run this again."
     return 0
   fi
   rm -rf "$target"
@@ -683,10 +721,12 @@ link_skill() {
     rm -rf "$target"
     cp -R ".agents/skills/$name" "$target"
     rm -f "$target/SKILL.md.bak"
-    : > "$target/$mark"
+    git hash-object "$target/SKILL.md" > "$target/$mark"
     echo "Copied to $target (no links here: edit .agents/skills/$name/SKILL.md, then run this again to refresh the copy)"
   fi
 }
+
+hidden=""
 
 for tool_dir in .claude/skills .kiro/skills; do
   for name in prep impl; do
@@ -728,9 +768,9 @@ Use them
   command to pick another one.
 
   Pi            Trust the project (/trust), because Pi loads project
-                skills only after that. If /skill:prep does not
-                appear, turn on skill commands in /settings
-                (enableSkillCommands).
+                skills only after that. If /skill:prep is not suggested,
+                type it anyway; to have it suggested, turn on
+                enableSkillCommands in /settings.
   Kiro CLI      A custom agent needs this line in its "resources":
                 "skill://.kiro/skills/**/SKILL.md"
 
@@ -753,13 +793,14 @@ Keep /prep from changing your code
                                                "Edit(~/.briefs/**)"
                 "/.briefs/**" means .briefs in the folder the session
                 starts in, so it works only from the repository root.
-                For a hard guarantee, use --permission-mode dontAsk: it
-                refuses everything not allowed, so also allow "WebSearch",
-                "WebFetch" and your test and scanner commands (for example
-                "Bash(npm test *)"), or the brief marks those checks
-                UNVERIFIED or UNTESTED. dontAsk also refuses the
-                multiple-choice questions; /prep then asks them as plain
-                text. Use a normal session for /impl.
+                For a stronger guard, use --permission-mode dontAsk: it
+                refuses everything you have not allowed. So also allow
+                "WebSearch", "WebFetch" and your test and scanner commands
+                (for example "Bash(npm test *)"), or the brief marks those
+                checks UNVERIFIED or UNTESTED. What you allow still runs
+                and can write files (tests write caches and snapshots).
+                dontAsk also refuses the multiple-choice questions; /prep
+                then asks them as plain text. Use a normal session for /impl.
   Kiro CLI v3   It asks before writes and before commands that are not
                 read-only. To stop the prompts for the briefs folders,
                 add these rules to ~/.kiro/settings/permissions.yaml:
@@ -778,8 +819,15 @@ skills, and the briefs in .briefs/ if the team should see them (git shows
 .briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
 NEXT_STEPS
 
+if [ -n "$hidden" ]; then
+  echo
+  echo "This clone has no link support, so git checked out these links as small"
+  echo "files:$hidden"
+  echo "They are now copies, and git ignores that local change (skip-worktree and"
+  echo ".git/info/exclude), so it is never committed."
+fi
 if [ -n "$kept" ]; then
   echo
   echo "Not updated, because they have changes of yours:$kept"
-  echo "The new versions are in $stage/. See the messages at the top."
+  echo "See the messages at the top."
 fi
