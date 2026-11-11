@@ -108,15 +108,24 @@ your-repo/
 
 Notes:
 
-- There is one real copy of each skill, so there is one file to edit. Where
-  links are not available (for example Git Bash on Windows), the installer
-  copies the files instead and refreshes those copies every time it runs.
-- Running it again is safe. If you changed a skill file, your version is kept
-  as `SKILL.md.bak`.
-- It only installs. It never removes your files or other skills.
+- There is one real copy of each skill, so there is one file to edit:
+  `.agents/skills/<name>/SKILL.md`. Where links are not available (for example
+  Git Bash on Windows), the installer copies the files instead and refreshes
+  those copies every time it runs.
+- Running it again is safe, and it is how you update. A skill file that matches
+  a version the installer shipped before is replaced. A file you changed is
+  kept: the new version goes to `.git/prep-install/<name>/SKILL.md`, which git
+  never commits, and the installer prints the commands to compare the two and
+  to take the new one. Shipped versions are listed in
+  [`shipped-versions.txt`](shipped-versions.txt).
+- It only installs. It never removes your files or other skills, and it skips
+  any link or folder in `.claude/skills` or `.kiro/skills` that it did not make.
 - Nothing is written to `~/.briefs/` until you say yes at the end of a `/prep`.
-- Commit `.agents/`, `.claude/skills`, `.kiro/skills` and `.briefs/` so your
-  team gets the skills and the briefs.
+- Commit `.agents/`, `.claude/skills` and `.kiro/skills` so your team gets the
+  skills, and the briefs in `.briefs/` if the team should see them (git shows
+  `.briefs/` only once it holds a brief).
+- Older versions of the installer kept a changed file as `SKILL.md.bak`. If
+  you have one, check it and delete it; the installer points it out.
 
 **Without the installer:** copy the two folders in [`skills/`](skills) into your
 tool's skills folder, for example `.claude/skills/` in a project, or
@@ -301,11 +310,16 @@ answer A. To stop the prompts for the brief folders, add to
 "Edit(~/.briefs/**)"
 ```
 
+`/.briefs/**` means `.briefs` in the folder where the session starts, so start
+Claude Code in the repository root.
+
 For a hard guarantee during `/prep`, start the session with
 `claude --permission-mode dontAsk`. It refuses everything that is not allowed,
 so also allow `"WebSearch"`, `"WebFetch"` and your test and scanner commands
 (for example `"Bash(npm test *)"`), or the brief marks those checks UNVERIFIED
-or UNTESTED. Use a normal session for `/impl`, because it has to edit files.
+or UNTESTED. dontAsk also refuses the multiple-choice questions; `/prep` then
+asks them as plain text. Use a normal session for `/impl`, because it has to
+edit files.
 </details>
 
 <details>
@@ -397,6 +411,17 @@ In the follow-up tests it answered a review with a checked report and no brief,
 and for a change it proved its plan in a throwaway clone (the new tests failed
 before the change and passed after) while saving nothing before approval.
 
+A third round compared two reviews of the installer, one with `/prep` and one
+without. With `/prep` the review found more real problems, reproduced each one
+and tried its fixes in a copy, but it ran the installer without reading the
+skill text it installs, which the other review did. Both sets of findings are
+fixed: running the installer again keeps your edits, your own links are left
+alone, `/prep` reviews read docs and prompts as well as running the code, its
+throwaway copy includes uncommitted changes, and its before-and-after check
+sees untracked files. The installer passes 27 checks covering these cases: no
+git, a subfolder, a second run, upgrades, your edits, copy mode, your own
+links and folders, a worktree, and Windows line endings.
+
 ## Limitations
 
 - The safety rules are instructions to the model, not a sandbox. Use your
@@ -417,6 +442,10 @@ files, so after editing them, rebuild it:
 ```bash
 python3 build_installer.py
 ```
+
+The build also adds the new versions to `shipped-versions.txt`. Commit that
+file with the installer, so that later installers recognise those versions and
+update them without asking.
 
 ## Remove
 

@@ -5,7 +5,9 @@
 #   impl   implements the newest brief
 #
 # One real copy of each lives in .agents/skills, which Pi reads directly.
-# Claude Code and Kiro CLI get links to those copies, so there is one file to edit.
+# Claude Code and Kiro CLI get links to those copies, so there is one file
+# to edit. Running this again updates the skills but keeps a skill file you
+# changed; the new version then waits in .git/prep-install/.
 # Run it from anywhere inside the repository:  bash install-prep.sh
 set -euo pipefail
 
@@ -15,20 +17,49 @@ if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
 fi
 cd "$root"
 echo "Installing the prep and impl skills into: $root"
-mkdir -p .briefs
+mkdir -p .briefs .agents/skills
 
-# Keep a backup only when an existing skill file differs from the new one.
+# New versions are written here first. Git never commits this folder.
+stage="$(git rev-parse --git-path prep-install)"
+kept=""
+
+# Every version of each skill file this installer has written (git blob ids).
+# A file that matches one has no changes of yours, so it can be replaced.
+shipped='
+impl 81b97e5864aadc388e29ef37d6ca22bb696fbb7e
+impl de458369c8fc8ccab0b721f3462b17753786ca74
+prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
+prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
+prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc
+'
+
 install_skill_file() {
-  local dir="$1"
-  if [ -f "$dir/SKILL.md" ] && ! cmp -s "$dir/SKILL.md" "$dir/SKILL.md.new"; then
-    cp "$dir/SKILL.md" "$dir/SKILL.md.bak"
-    echo "Your previous $dir/SKILL.md was different. Kept it as $dir/SKILL.md.bak"
+  local name="$1"
+  local file=".agents/skills/$name/SKILL.md" new="$stage/$name/SKILL.md"
+  mkdir -p ".agents/skills/$name"
+  if [ -f "$file.bak" ]; then
+    echo "Note: $file.bak is from an older version of this installer. Check it, then delete it."
   fi
-  mv "$dir/SKILL.md.new" "$dir/SKILL.md"
+  if [ ! -e "$file" ]; then
+    mv "$new" "$file"
+    echo "Installed $file"
+  elif cmp -s "$file" "$new"; then
+    rm -f "$new"
+    echo "Up to date: $file"
+  elif printf '%s\n' "$shipped" | grep -qxF "$name $(git hash-object "$file")"; then
+    mv "$new" "$file"
+    echo "Updated $file"
+  else
+    kept="$kept $file"
+    echo "Kept $file: it has changes of yours, so it was not replaced."
+    echo "  The new version is in $new"
+    echo "  Compare:  git diff --no-index \"$file\" \"$new\""
+    echo "  Take it:  cp \"$new\" \"$file\""
+  fi
 }
 
-mkdir -p ".agents/skills/prep"
-cat > ".agents/skills/prep/SKILL.md.new" <<'PREP_SKILL_EOF'
+mkdir -p "$stage/prep"
+cat > "$stage/prep/SKILL.md" <<'PREP_SKILL_EOF'
 ---
 name: prep
 description: Turns a rough request into a precise, checkable task brief before any code is written, or into a checked review when nothing should change yet. Surveys the code read-only, reproduces every problem it reports, checks official docs, asks only what it cannot find out, and warns about risky requests. Use when the user types /prep, or asks to prepare, scope or plan a non-trivial change before it is made. Not for quick questions or small, clear edits.
@@ -36,16 +67,13 @@ description: Turns a rough request into a precise, checkable task brief before a
 
 # Prep
 
-Turn a rough request into a task brief that the implementing session can carry
-out and verify without asking a single question. That session may be a fresh
-conversation without this one, and a misunderstanding is cheap to fix now and
-expensive after the code is written. Find what is missing: in the code and the
-official docs first, from the person second.
-
-Work like the strongest senior engineer on the team: curious, thorough and
-honest about what you do not know. Such an engineer is trusted because every
-claim is checked and the first idea is tested before it is recommended, not
-because the first answer sounds confident.
+Turn a rough request into a task brief that the implementing session, maybe a
+fresh conversation, can carry out and verify without asking a single question:
+a misunderstanding is cheap to fix now and expensive after the code is
+written. Find what is missing in the code and the official docs first, and
+ask the person second. Work like the strongest senior engineer on the team:
+curious, thorough, honest about what you do not know, and trusted because
+every claim is checked and the first idea tested before it is recommended.
 
 ## Ground rules
 
@@ -94,7 +122,9 @@ because the first answer sounds confident.
   `git show --stat`, `| tail -n 40`, a scanner's `--severity HIGH,CRITICAL`.
 - Make answering easy: plain words, short messages, statements and questions
   numbered in one list, each question's options lettered, and your tool's
-  multiple-choice questions if it has them. Write in English unless asked.
+  multiple-choice questions if it has them (if they are refused, as in
+  Claude Code's dontAsk mode, ask them as plain text). Write in English
+  unless asked.
 - Scale to the task. A small task changes one or two files, has one obvious
   approach and touches nothing live; keep every step short for it. Offer to
   skip the prep only if the person did not ask for one by name.
@@ -118,10 +148,10 @@ repository's top folder. Log lines look like this:
 
 ## Steps
 
-End your message to let the person reply in four cases only: after the
-report in step 5 if it has a warning or a question, when you show the brief
-in step 9, when step 10 changes what the brief will do, and earlier if the
-request itself is unclear or clearly dangerous.
+End your message to let the person reply only in these cases: after the
+step 5 message if it is a review result or has a warning or a question,
+when you show the brief in step 9, when step 10 changes what the brief will
+do, and earlier if the request itself is unclear or clearly dangerous.
 
 ### 1. Start light
 
@@ -196,13 +226,15 @@ Also find:
 
 Reproduce every problem you will report with a safe command from step 6,
 such as a failing test, a local run or a run in a throwaway copy (step 4).
-In a review, also walk the edge cases: a second run, missing input, no git,
-no permission, another OS. For a bug, then find the root cause:
-trace the bad value backward to where it starts, compare with similar code
-that works and list every difference, and test one guess at a time with the
-smallest safe check. Keep going until one cause explains every symptom. If
-you cannot confirm the cause, say so, and brief the next investigation step
-instead of a fix.
+In a review, also walk the edge cases (a second run, missing input, no git,
+no permission, another OS), and read the parts meant to be read, such as
+docs, prompts and config comments: look for mistakes, for contradictions
+with themselves or the code, and for needless length. For a bug, find the
+root cause: trace the bad value backward to where it starts, compare with
+similar code that works and list every difference, and test one guess at a
+time with the smallest safe check. Keep going until one cause explains every
+symptom. If you cannot confirm the cause, say so, and brief the next
+investigation step instead of a fix.
 
 With a dedicated skill, survey less: confirm its defaults still hold here and
 look only at what differs. With no example to follow or no code yet, say so
@@ -251,9 +283,16 @@ Then imagine the chosen change is live and has failed. Name the two or three
 most likely reasons, and plan how the brief prevents or detects each one.
 
 When you are not sure a fix works, try it in a throwaway copy, never in the
-project: `d=$(mktemp -d) && git clone -q . "$d/try"` copies the committed
-files without ignored ones such as `.env`. Make the change there, run the
-proof there, and record what it printed.
+project. This copies the committed files and their uncommitted changes, but
+no untracked or ignored files such as `.env`, and prints where the copy is:
+
+```
+r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && git clone -q "$r" "$d/try" &&
+{ git -C "$r" diff --quiet HEAD || git -C "$r" diff HEAD --binary | git -C "$d/try" apply; } && echo "$d/try"
+```
+
+Copy in any untracked file the trial needs. Make the change and run the
+proof there, record what it printed, then delete the folder `mktemp` made.
 
 ### 5. Report and ask, in one message
 
@@ -318,10 +357,12 @@ output, for example:
 Never apply, deploy, push, migrate, pull, checkout or stash. Prefer the
 narrowest command that covers the change.
 
-Run `git status --short; git diff --no-ext-diff --no-textconv | cksum` before
-and after. If a command changed a file, tell the person and leave the file as
-it is (no `git restore` or `git reset`: it may hold their own uncommitted
-work), and do not run that command again.
+Run this before and after; it sees changed, new and untracked files, but not
+ignored ones such as caches a test writes:
+`git status --short; { git diff --no-ext-diff --no-textconv; git ls-files -o --exclude-standard -z :/ | xargs -0 cksum; } | cksum`
+If a command changed a file, tell the person and leave the file as it is (no
+`git restore` or `git reset`: it may hold their own uncommitted work), and
+do not run that command again.
 
 Do not install or change anything to make a command run (no `npm install`,
 `pip install` or `terraform init`). A proof that fails to run today will fail
@@ -364,17 +405,15 @@ and how do I know? Find every name, argument or setting it uses in the code or
 in the docs for the version in use, walk one example from the Goal through it,
 and check that nothing that uses it breaks. Fix it, or mark it UNVERIFIED.
 
-Then test it with a second reader. For a change to production, security or
-data, if your tool can start a helper agent on a cheaper model (such as
+For a change to production, security or data, also test it with a second
+reader: if your tool can start a helper agent on a cheaper model (such as
 Haiku), give it the brief and ask it to open every path and page the brief
-cites (but no file that may hold a secret), to change nothing and only read
-and search, and to list each claim that does not match and each question it
-would need answered to implement the brief. Otherwise do both checks
-yourself. Fix every claim that
-does not hold, and sort the questions: if the code or the docs answer one,
-add the answer to the brief; decide a minor one under Decisions as assumed;
-put a real one under Open questions. For a change to production, security or
-data, also ask the advisor, if you have one, to check the brief.
+cites (but no file that may hold a secret), to change nothing, and to list
+each claim that does not match and each question it would need answered to
+implement the brief; otherwise do this yourself. Ask the advisor too, if you
+have one. Fix every claim that does not hold, and sort the questions: add
+the answer to the brief if the code or the docs give one, decide a minor one
+under Decisions as assumed, and put a real one under Open questions.
 
 The brief is ready when every assumption is written down (under Decisions or
 Open questions), every change is verified and names a place and a check that
@@ -535,10 +574,10 @@ conversation after seeing what will change. When finished, tell the person
 in one line what this brief got wrong or left out.
 ```
 PREP_SKILL_EOF
-install_skill_file ".agents/skills/prep"
+install_skill_file prep
 
-mkdir -p ".agents/skills/impl"
-cat > ".agents/skills/impl/SKILL.md.new" <<'IMPL_SKILL_EOF'
+mkdir -p "$stage/impl"
+cat > "$stage/impl/SKILL.md" <<'IMPL_SKILL_EOF'
 ---
 name: impl
 description: Implements a task brief written by the prep skill. Finds the newest brief in .briefs/ (or the one the user names), follows it, runs its proof commands, and reports what the brief got wrong or left out. Use it when the user types /impl, or asks to implement or start on a brief from /prep.
@@ -616,28 +655,36 @@ their corrections.
   decision in the brief is not enough. For Terraform, apply the saved plan
   the person saw: `terraform plan -out=<file>`, then `terraform apply <file>`.
 IMPL_SKILL_EOF
-install_skill_file ".agents/skills/impl"
+install_skill_file impl
 
 # A link where possible. Where links are not available (for example Git Bash
 # on Windows, where ln -s copies), a marked copy that every run refreshes.
+# Links and folders this installer did not make are left alone.
 link_skill() {
   local tool_dir="$1" name="$2"
-  local target="$tool_dir/$name" mark=".installed-copy"
+  local target="$tool_dir/$name" mark=".installed-copy" want="../../.agents/skills/$name"
   mkdir -p "$tool_dir"
-  if [ -e "$target" ] && [ ! -L "$target" ] && [ ! -f "$target/$mark" ]; then
+  if [ -L "$target" ]; then
+    if [ "$(readlink "$target")" = "$want" ]; then
+      echo "Linked $target"
+    else
+      echo "Skipped $target: it is a link of yours, to $(readlink "$target")"
+    fi
+    return 0
+  fi
+  if [ -e "$target" ] && [ ! -f "$target/$mark" ]; then
     echo "Skipped $target: it already exists and was not made by this installer"
     return 0
   fi
   rm -rf "$target"
-  ln -s "../../.agents/skills/$name" "$target" 2>/dev/null || true
-  if [ -L "$target" ]; then
+  if ln -s "$want" "$target" 2>/dev/null && [ -L "$target" ]; then
     echo "Linked $target"
   else
     rm -rf "$target"
     cp -R ".agents/skills/$name" "$target"
     rm -f "$target/SKILL.md.bak"
     : > "$target/$mark"
-    echo "Copied to $target (links are not available here; run this again after editing the skills)"
+    echo "Copied to $target (no links here: edit .agents/skills/$name/SKILL.md, then run this again to refresh the copy)"
   fi
 }
 
@@ -663,6 +710,7 @@ fi
 cat <<'NEXT_STEPS'
 
 Done. The skills are in .agents/skills/prep and .agents/skills/impl.
+To change one, edit its SKILL.md there; running this again keeps your edits.
 Briefs go to .briefs/ in this repository.
 The record of tasks lives in ~/.briefs/ and is shared by every
 repository on this computer. Nothing is written there until you say yes
@@ -692,7 +740,8 @@ Keep /prep from changing your code
 
   Claude Code   Since v2.1.283 sessions start in auto mode, where a
                 classifier approves actions instead of you. For /prep,
-                start in Manual mode, which asks before every change:
+                start in Manual mode, which asks before every change, and
+                start it in the repository root:
                   claude --permission-mode manual
                 Approve tests, scanners and writes to the briefs folders;
                 decline anything else. The record step is one shell
@@ -702,11 +751,15 @@ Keep /prep from changing your code
                   in .claude/settings.json     "Edit(/.briefs/**)"
                   in ~/.claude/settings.json   "Read(~/.briefs/**)",
                                                "Edit(~/.briefs/**)"
+                "/.briefs/**" means .briefs in the folder the session
+                starts in, so it works only from the repository root.
                 For a hard guarantee, use --permission-mode dontAsk: it
                 refuses everything not allowed, so also allow "WebSearch",
                 "WebFetch" and your test and scanner commands (for example
                 "Bash(npm test *)"), or the brief marks those checks
-                UNVERIFIED or UNTESTED. Use a normal session for /impl.
+                UNVERIFIED or UNTESTED. dontAsk also refuses the
+                multiple-choice questions; /prep then asks them as plain
+                text. Use a normal session for /impl.
   Kiro CLI v3   It asks before writes and before commands that are not
                 read-only. To stop the prompts for the briefs folders,
                 add these rules to ~/.kiro/settings/permissions.yaml:
@@ -720,6 +773,13 @@ Keep /prep from changing your code
   Pi            Pi does not ask before it acts. Run "git status" after a
                 /prep. Only .briefs/ should have changed.
 
-Commit .agents/, .claude/skills, .kiro/skills and .briefs/ so the team
-gets the skills and the briefs. ~/.briefs/ stays on your computer.
+Commit .agents/, .claude/skills and .kiro/skills so the team gets the
+skills, and the briefs in .briefs/ if the team should see them (git shows
+.briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
 NEXT_STEPS
+
+if [ -n "$kept" ]; then
+  echo
+  echo "Not updated, because they have changes of yours:$kept"
+  echo "The new versions are in $stage/. See the messages at the top."
+fi

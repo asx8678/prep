@@ -1,0 +1,8 @@
+# Every version of each skill file that install-prep.sh has written, as git blob ids.
+# build_installer.py adds the current ones. Never remove a line: the installer
+# replaces a skill file without asking only when it matches one of these.
+impl 81b97e5864aadc388e29ef37d6ca22bb696fbb7e
+impl de458369c8fc8ccab0b721f3462b17753786ca74
+prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
+prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
+prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc

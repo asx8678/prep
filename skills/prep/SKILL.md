@@ -5,16 +5,13 @@ description: Turns a rough request into a precise, checkable task brief before a
 
 # Prep
 
-Turn a rough request into a task brief that the implementing session can carry
-out and verify without asking a single question. That session may be a fresh
-conversation without this one, and a misunderstanding is cheap to fix now and
-expensive after the code is written. Find what is missing: in the code and the
-official docs first, from the person second.
-
-Work like the strongest senior engineer on the team: curious, thorough and
-honest about what you do not know. Such an engineer is trusted because every
-claim is checked and the first idea is tested before it is recommended, not
-because the first answer sounds confident.
+Turn a rough request into a task brief that the implementing session, maybe a
+fresh conversation, can carry out and verify without asking a single question:
+a misunderstanding is cheap to fix now and expensive after the code is
+written. Find what is missing in the code and the official docs first, and
+ask the person second. Work like the strongest senior engineer on the team:
+curious, thorough, honest about what you do not know, and trusted because
+every claim is checked and the first idea tested before it is recommended.
 
 ## Ground rules
 
@@ -63,7 +60,9 @@ because the first answer sounds confident.
   `git show --stat`, `| tail -n 40`, a scanner's `--severity HIGH,CRITICAL`.
 - Make answering easy: plain words, short messages, statements and questions
   numbered in one list, each question's options lettered, and your tool's
-  multiple-choice questions if it has them. Write in English unless asked.
+  multiple-choice questions if it has them (if they are refused, as in
+  Claude Code's dontAsk mode, ask them as plain text). Write in English
+  unless asked.
 - Scale to the task. A small task changes one or two files, has one obvious
   approach and touches nothing live; keep every step short for it. Offer to
   skip the prep only if the person did not ask for one by name.
@@ -87,10 +86,10 @@ repository's top folder. Log lines look like this:
 
 ## Steps
 
-End your message to let the person reply in four cases only: after the
-report in step 5 if it has a warning or a question, when you show the brief
-in step 9, when step 10 changes what the brief will do, and earlier if the
-request itself is unclear or clearly dangerous.
+End your message to let the person reply only in these cases: after the
+step 5 message if it is a review result or has a warning or a question,
+when you show the brief in step 9, when step 10 changes what the brief will
+do, and earlier if the request itself is unclear or clearly dangerous.
 
 ### 1. Start light
 
@@ -165,13 +164,15 @@ Also find:
 
 Reproduce every problem you will report with a safe command from step 6,
 such as a failing test, a local run or a run in a throwaway copy (step 4).
-In a review, also walk the edge cases: a second run, missing input, no git,
-no permission, another OS. For a bug, then find the root cause:
-trace the bad value backward to where it starts, compare with similar code
-that works and list every difference, and test one guess at a time with the
-smallest safe check. Keep going until one cause explains every symptom. If
-you cannot confirm the cause, say so, and brief the next investigation step
-instead of a fix.
+In a review, also walk the edge cases (a second run, missing input, no git,
+no permission, another OS), and read the parts meant to be read, such as
+docs, prompts and config comments: look for mistakes, for contradictions
+with themselves or the code, and for needless length. For a bug, find the
+root cause: trace the bad value backward to where it starts, compare with
+similar code that works and list every difference, and test one guess at a
+time with the smallest safe check. Keep going until one cause explains every
+symptom. If you cannot confirm the cause, say so, and brief the next
+investigation step instead of a fix.
 
 With a dedicated skill, survey less: confirm its defaults still hold here and
 look only at what differs. With no example to follow or no code yet, say so
@@ -220,9 +221,16 @@ Then imagine the chosen change is live and has failed. Name the two or three
 most likely reasons, and plan how the brief prevents or detects each one.
 
 When you are not sure a fix works, try it in a throwaway copy, never in the
-project: `d=$(mktemp -d) && git clone -q . "$d/try"` copies the committed
-files without ignored ones such as `.env`. Make the change there, run the
-proof there, and record what it printed.
+project. This copies the committed files and their uncommitted changes, but
+no untracked or ignored files such as `.env`, and prints where the copy is:
+
+```
+r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && git clone -q "$r" "$d/try" &&
+{ git -C "$r" diff --quiet HEAD || git -C "$r" diff HEAD --binary | git -C "$d/try" apply; } && echo "$d/try"
+```
+
+Copy in any untracked file the trial needs. Make the change and run the
+proof there, record what it printed, then delete the folder `mktemp` made.
 
 ### 5. Report and ask, in one message
 
@@ -287,10 +295,12 @@ output, for example:
 Never apply, deploy, push, migrate, pull, checkout or stash. Prefer the
 narrowest command that covers the change.
 
-Run `git status --short; git diff --no-ext-diff --no-textconv | cksum` before
-and after. If a command changed a file, tell the person and leave the file as
-it is (no `git restore` or `git reset`: it may hold their own uncommitted
-work), and do not run that command again.
+Run this before and after; it sees changed, new and untracked files, but not
+ignored ones such as caches a test writes:
+`git status --short; { git diff --no-ext-diff --no-textconv; git ls-files -o --exclude-standard -z :/ | xargs -0 cksum; } | cksum`
+If a command changed a file, tell the person and leave the file as it is (no
+`git restore` or `git reset`: it may hold their own uncommitted work), and
+do not run that command again.
 
 Do not install or change anything to make a command run (no `npm install`,
 `pip install` or `terraform init`). A proof that fails to run today will fail
@@ -333,17 +343,15 @@ and how do I know? Find every name, argument or setting it uses in the code or
 in the docs for the version in use, walk one example from the Goal through it,
 and check that nothing that uses it breaks. Fix it, or mark it UNVERIFIED.
 
-Then test it with a second reader. For a change to production, security or
-data, if your tool can start a helper agent on a cheaper model (such as
+For a change to production, security or data, also test it with a second
+reader: if your tool can start a helper agent on a cheaper model (such as
 Haiku), give it the brief and ask it to open every path and page the brief
-cites (but no file that may hold a secret), to change nothing and only read
-and search, and to list each claim that does not match and each question it
-would need answered to implement the brief. Otherwise do both checks
-yourself. Fix every claim that
-does not hold, and sort the questions: if the code or the docs answer one,
-add the answer to the brief; decide a minor one under Decisions as assumed;
-put a real one under Open questions. For a change to production, security or
-data, also ask the advisor, if you have one, to check the brief.
+cites (but no file that may hold a secret), to change nothing, and to list
+each claim that does not match and each question it would need answered to
+implement the brief; otherwise do this yourself. Ask the advisor too, if you
+have one. Fix every claim that does not hold, and sort the questions: add
+the answer to the brief if the code or the docs give one, decide a minor one
+under Decisions as assumed, and put a real one under Open questions.
 
 The brief is ready when every assumption is written down (under Decisions or
 Open questions), every change is verified and names a place and a check that
