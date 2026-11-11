@@ -5,8 +5,9 @@ change into two steps: first a careful, read-only preparation, then the
 implementation.
 
 - **`/prep`** reads your code, checks the official docs, asks you only what it
-  cannot find out, and writes a precise, checkable **task brief**. It does not
-  change your project.
+  cannot find out, and writes a precise, checkable **task brief**. Ask it for a
+  review or a diagnosis instead, and you get a **checked report**: every
+  problem shown happening, each with a fix. It does not change your project.
 - **`/impl`** implements that brief, proves that it works, and tells you what
   the brief got wrong or left out.
 
@@ -56,6 +57,9 @@ is checked:
 - it checks whether the thing already exists, and how it was done before,
 - it compares a few options and argues against its own favourite,
 - it warns you when a request is risky, or when a better way exists,
+- it shows every problem it reports happening: the command and its output,
+- when it is not sure a fix works, it tries it in a throwaway copy, never in
+  your project,
 - for every change it plans, it asks itself: *is it correct, does it make
   sense, and how do I know?*
 - it plans a proof for every change: a check that fails today and passes after.
@@ -77,8 +81,9 @@ flowchart LR
 
 ## Install
 
-Run the installer from anywhere inside the repository where you want the
-skills. Read it first: it is plain bash.
+Run the installer from anywhere inside the git repository where you want the
+skills. Read it first: it is plain bash. Outside a git repository it stops
+without writing anything.
 
 ```bash
 cd your-repo
@@ -104,7 +109,8 @@ your-repo/
 Notes:
 
 - There is one real copy of each skill, so there is one file to edit. Where
-  links are not available, the installer copies the files instead.
+  links are not available (for example Git Bash on Windows), the installer
+  copies the files instead and refreshes those copies every time it runs.
 - Running it again is safe. If you changed a skill file, your version is kept
   as `SKILL.md.bak`.
 - It only installs. It never removes your files or other skills.
@@ -138,7 +144,12 @@ Examples of good requests:
 /prep how do I fix the bug where page 2 repeats the last item of page 1?
 /prep add an admin-only endpoint to delete products
 /prep add versioning to the logs bucket
+/prep why does the deploy job fail on main?
+/prep review the retry logic in the payment client
 ```
+
+The last two ask for a diagnosis and a review, so `/prep` answers with a
+checked report instead of a brief, then offers a brief for the fixes.
 
 When `/prep` asks questions, answer in one short line: `2 is wrong, 5B`, or
 just `ok` to accept every recommendation.
@@ -156,14 +167,14 @@ Tool notes:
 | Step | What happens |
 |---|---|
 | 1. Start light | Notes today's date (to judge how current versions and docs are) and the commit. Checks whether a dedicated skill already covers this kind of task. |
-| 2. Understand | Restates the goal in plain words, and asks whether the request is a good way to reach it. Asks you only if the request can be read two ways. |
-| 3. Survey the code | Checks whether the feature already exists. Finds the closest existing example and every place it touches. Looks for earlier attempts in the git history and pull requests, including reverted ones. For a bug, reproduces it and traces it to the root cause. |
-| 4. Choose how | Reads the official docs for the versions in use: advisories for CVEs, the OWASP cheat sheets for security work, provider docs for Terraform. Sketches three options (minimal, clean, pragmatic), compares them on security, data, reliability, operations, cost and tests, argues against its favourite, and imagines how the change could fail. |
-| 5. Report and ask | One message: warnings, numbered findings each with evidence (a path, a command or a link), the options, and at most three questions, each with a recommended answer. |
+| 2. Understand | Restates the goal in plain words, and asks whether the request is a good way to reach it. Decides what you want back: a brief for a change, or a checked report for a review, a diagnosis or a question. |
+| 3. Survey the code | Checks whether the feature already exists. Finds the closest existing example and every place it touches. Looks for earlier attempts in the git history and pull requests, including reverted ones. Reproduces every problem it will report, walks the edge cases (a second run, missing input, no git, another OS), and for a bug traces it to the root cause. |
+| 4. Choose how | Reads the official docs for the versions in use: advisories for CVEs, the OWASP cheat sheets for security work, provider docs for Terraform. Sketches three options (minimal, clean, pragmatic), compares them on security, data, reliability, operations, cost and tests, argues against its favourite, and imagines how the change could fail. When it is not sure a fix works, it tries it in a throwaway copy of the project. |
+| 5. Report and ask | For a change: warnings, numbered findings each with evidence (a path, a command or a link), the options, and at most three questions, each with a recommended answer. For a review: the findings, most serious first, each shown happening and with a fix, then it stops. |
 | 6. Prove it can be done | Runs the safe proof commands now (unit tests, scanners, linters in check mode) and records what they print as the baseline. |
-| 7. Write the brief | Fills a fixed template (below). Every change gets a check that fails if the change is missing or wrong. |
+| 7. Draft the brief | Fills a fixed template (below) in the conversation. Every change gets a check that fails if the change is missing or wrong. |
 | 8. Check the brief | Rereads it as a stranger would. Verifies each change: every name, argument and setting against the code or the docs, one example walked through, nothing that uses it broken. A second, cheaper model checks every path and page the brief cites. |
-| 9. Show it | Shows you the brief and asks whether to keep a record. Nothing is saved before you reply. |
+| 9. Show it | Shows you the brief and asks whether to keep a record. Nothing is saved before you approve it. |
 | 10. Finish | Saves the brief, writes the record if you agreed, and tells you how to start `/impl`. |
 
 A small, clear task gets short versions of every step.
@@ -224,7 +235,8 @@ The logs bucket keeps every overwritten or deleted object version for 90 days, t
 
 ## What /impl does
 
-1. Finds the newest brief in `.briefs/`, or the one you name, and says which.
+1. Finds the newest brief in `.briefs/` that is not done yet, or the one you
+   name, and says which.
 2. Reads the whole brief. Checks `git status`, and whether the code moved since
    the commit the brief was written against.
 3. Writes the new tests first and watches them fail for the reason the brief
@@ -234,7 +246,8 @@ The logs bucket keeps every overwritten or deleted object version for 90 days, t
 5. Reviews its own diff like a strict reviewer, and asks of each change: is it
    correct, does it make sense, and how do I know?
 6. Reports what changed, what each check returned, what is left for you
-   (commit, push, deploy), and what the brief got wrong or left out.
+   (commit, push, deploy), and what the brief got wrong or left out. When
+   every check passed, it marks the brief done, so it is not run twice.
 
 ## Safety
 
@@ -265,9 +278,19 @@ permissions are the lock:
 <details>
 <summary><b>Claude Code</b></summary>
 
-In the default mode, Claude Code asks before every file change and every
-command that is not read-only. To stop the prompts for the brief folders, add
-to `permissions.allow`:
+Since v2.1.283, Claude Code sessions in a terminal start in **auto mode**,
+where a classifier approves actions instead of you
+([permission modes](https://code.claude.com/docs/en/permission-modes)). For
+`/prep`, start in Manual mode, which asks before every change:
+
+```bash
+claude --permission-mode manual
+```
+
+Approve tests, scanners and writes to the brief folders, and decline anything
+else. The record step is one shell command (`cp` and `printf`): approve it, or
+answer A. To stop the prompts for the brief folders, add to
+`permissions.allow`:
 
 ```jsonc
 // .claude/settings.json
@@ -279,10 +302,10 @@ to `permissions.allow`:
 ```
 
 For a hard guarantee during `/prep`, start the session with
-`claude --permission-mode dontAsk`. It then refuses everything that is not
-allowed, including test and scanner commands, so allow those too (for example
-`"Bash(npm test *)"`) or the brief marks the proof UNTESTED. Use a normal
-session for `/impl`, because it has to edit files.
+`claude --permission-mode dontAsk`. It refuses everything that is not allowed,
+so also allow `"WebSearch"`, `"WebFetch"` and your test and scanner commands
+(for example `"Bash(npm test *)"`), or the brief marks those checks UNVERIFIED
+or UNTESTED. Use a normal session for `/impl`, because it has to edit files.
 </details>
 
 <details>
