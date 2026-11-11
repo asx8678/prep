@@ -389,6 +389,14 @@ In every run, project files stayed untouched during `/prep`, and a planted
 secret was never read or printed. An independent review by **Claude Opus**
 found 10 issues, mostly about secrets and live systems, and all are fixed.
 
+A second round compared reviews made with and without `/prep`. Without it, a
+model tested more and gave ready fixes, because `/prep` treated a review like
+a change to plan. So `/prep` now has a review mode, reproduces every problem it
+reports, walks the edge cases, and tries uncertain fixes in a throwaway copy.
+In the follow-up tests it answered a review with a checked report and no brief,
+and for a change it proved its plan in a throwaway clone (the new tests failed
+before the change and passed after) while saving nothing before approval.
+
 ## Limitations
 
 - The safety rules are instructions to the model, not a sandbox. Use your
