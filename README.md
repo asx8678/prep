@@ -39,6 +39,7 @@ impl:  writes failing tests → makes the change → runs the proof → reports
 - [Change the skills](#change-the-skills)
 - [Remove](#remove)
 - [Ideas borrowed](#ideas-borrowed)
+- [License](#license)
 
 ## Why
 
@@ -406,3 +407,8 @@ like.
 - Ranking questions by impact and making vague words measurable: GitHub's
   *Spec Kit*
 - `WHEN … THE SYSTEM SHALL …` requirement lines (EARS): *Kiro*
+
+## License
+
+[MIT](LICENSE). Anyone may use, change and share these skills, also at work,
+as long as they keep the copyright and license notice.
