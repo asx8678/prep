@@ -482,6 +482,17 @@ to `main` and every pull request. Windows is simulated (git without link
 support, and an `ln` that copies as Git Bash does), not run on a real
 Windows machine.
 
+A sixth round compared the text before and after the latest rules with paid
+model runs from [`evals/`](evals): four cases, five runs each, on Claude Opus.
+No difference in behaviour showed. Both versions checked a secret by name
+without printing it, picked the dated brief over a stray note, and ran every
+test module. The new text more often said how a server started for a check is
+stopped (5 of 5 against 3 of 5), but in 4 of 5 briefs the command itself still
+left it running. The review case could not tell them apart: git does not run
+in the eval's sandbox, and both versions named that as what they did not
+check. Run it with `bash evals/compare.sh`; the full set cost about $13 at
+list price.
+
 ## Limitations
 
 - The safety rules are instructions to the model, not a sandbox. Use your
