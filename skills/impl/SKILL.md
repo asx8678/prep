@@ -12,9 +12,10 @@ their corrections.
 ## Steps
 
 1. Find the brief. Use the file the person named after the command.
-   Otherwise use the `.md` file in `.briefs/` whose name sorts last
-   (names start with the date and time). Say in one line which file you
-   use. If there is none, say so and stop.
+   Otherwise use the newest brief that is not done: the `.md` file in
+   `.briefs/` whose name sorts last (names start with the date and time)
+   and whose Status is not "done". Say in one line which file you use. If
+   there is none, say so and stop.
 2. Read the whole brief before you change anything. If its Status is "has
    open questions", show those questions and wait for the answers. Run
    `git status --short`. If there are uncommitted changes outside
@@ -52,8 +53,9 @@ their corrections.
    - what is left for the person: commit, push, deploy, and the checks
      after deploy,
    - one line on what the brief got wrong or left out, or "nothing".
-8. If the brief ends with a record note, append the done line it asks
-   for, with today's date and the last line of your report in it, using
+8. When every check for this session passed, set the brief's Status to
+   "done". If the brief ends with a record note, append the done line it
+   asks for, with today's date and the last line of your report in it, using
    `printf '%s\n' '<line>' >> <log>` with no quotes or backticks in the line.
 
 ## Always

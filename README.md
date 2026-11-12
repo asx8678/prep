@@ -5,8 +5,9 @@ change into two steps: first a careful, read-only preparation, then the
 implementation.
 
 - **`/prep`** reads your code, checks the official docs, asks you only what it
-  cannot find out, and writes a precise, checkable **task brief**. It does not
-  change your project.
+  cannot find out, and writes a precise, checkable **task brief**. Ask it for a
+  review or a diagnosis instead, and you get a **checked report**: every
+  problem shown happening, each with a fix. It does not change your project.
 - **`/impl`** implements that brief, proves that it works, and tells you what
   the brief got wrong or left out.
 
@@ -56,6 +57,9 @@ is checked:
 - it checks whether the thing already exists, and how it was done before,
 - it compares a few options and argues against its own favourite,
 - it warns you when a request is risky, or when a better way exists,
+- it shows every problem it reports happening: the command and its output,
+- when it is not sure a fix works, it tries it in a throwaway copy, never in
+  your project,
 - for every change it plans, it asks itself: *is it correct, does it make
   sense, and how do I know?*
 - it plans a proof for every change: a check that fails today and passes after.
@@ -77,8 +81,9 @@ flowchart LR
 
 ## Install
 
-Run the installer from anywhere inside the repository where you want the
-skills. Read it first: it is plain bash.
+Run the installer from anywhere inside the git repository where you want the
+skills. Read it first: it is plain bash. Outside a git repository it stops
+without writing anything.
 
 ```bash
 cd your-repo
@@ -87,7 +92,13 @@ less install-prep.sh
 bash install-prep.sh
 ```
 
-It creates:
+That sets up Claude Code, Kiro CLI and Pi. To set up only some of them, name
+them: `bash install-prep.sh claude`, or `bash install-prep.sh kiro pi`
+(`--help` lists the names). The real copy always goes to `.agents/skills/`,
+which Pi reads, so Pi can use the skills either way. Naming fewer tools later
+removes nothing, and the notes at the end cover only the tools you named.
+
+With all three, it creates:
 
 ```text
 your-repo/
@@ -98,19 +109,49 @@ your-repo/
 ├── .kiro/skills/prep    → link                          (Kiro CLI)
 ├── .kiro/skills/impl    → link
 └── .briefs/                         where the briefs are saved
-~/.briefs/                           optional task record: log.md, tasks/, skills/
 ```
+
+The installer writes only inside the repository. The optional task record in
+`~/.briefs/` (`log.md`, `tasks/`, `skills/`) is created by `/prep`, and only
+after you say yes at the end of one.
 
 Notes:
 
-- There is one real copy of each skill, so there is one file to edit. Where
-  links are not available, the installer copies the files instead.
-- Running it again is safe. If you changed a skill file, your version is kept
-  as `SKILL.md.bak`.
-- It only installs. It never removes your files or other skills.
-- Nothing is written to `~/.briefs/` until you say yes at the end of a `/prep`.
-- Commit `.agents/`, `.claude/skills`, `.kiro/skills` and `.briefs/` so your
-  team gets the skills and the briefs.
+- There is one real copy of each skill, so there is one file to edit:
+  `.agents/skills/<name>/SKILL.md`. Where links are not available (for example
+  Git Bash on Windows), the installer copies the files instead and refreshes
+  those copies every time it runs.
+- Running it again is safe, and it is how you update. A skill file that matches
+  a version the installer shipped before is replaced. A file you changed is
+  kept: the new version goes to `.git/prep-install/<name>/SKILL.md`, which git
+  never commits, and the installer prints the commands to compare the two and
+  to take the new one. Shipped versions are listed in
+  [`shipped-versions.txt`](shipped-versions.txt).
+- It only installs. It never removes your files or other skills, and it skips
+  any link or folder in `.claude/skills` or `.kiro/skills` that it did not make.
+- Commit `.agents/`, `.claude/skills` and `.kiro/skills` so your team gets the
+  skills, and the briefs in `.briefs/` if the team should see them (git shows
+  `.briefs/` only once it holds a brief).
+- A copy you changed (where links are not available) is kept too, with a
+  message: copies are made from `.agents/skills/<name>/SKILL.md`, so change
+  that file instead.
+- If `.claude/skills` or `.kiro/skills` is itself a link to a folder somewhere
+  else, a link inside it would not open, so the installer makes copies there.
+- On a clone without link support (the default on Windows), git checks out
+  the committed links as small text files, and Claude Code and Kiro cannot
+  load the skills through them. Pi is not affected. The installer leaves those
+  files alone and prints two choices:
+  1. Turn on link support, which is the clean way: on Windows turn on
+     Developer Mode, run `git config core.symlinks true`, delete the four
+     small files and check them out again, then run the installer again.
+  2. Run `bash install-prep.sh --copies`. It replaces the files with local
+     copies and tells git to ignore that change (`skip-worktree` and
+     `.git/info/exclude`), so the copies are never committed over the links.
+     Git then refuses to switch to a branch that does not have these links,
+     and to pull a change to them, until you run
+     `bash install-prep.sh --undo-copies`.
+- Older versions of the installer kept a changed file as `SKILL.md.bak`. If
+  you have one, check it and delete it; the installer points it out.
 
 **Without the installer:** copy the two folders in [`skills/`](skills) into your
 tool's skills folder, for example `.claude/skills/` in a project, or
@@ -138,7 +179,12 @@ Examples of good requests:
 /prep how do I fix the bug where page 2 repeats the last item of page 1?
 /prep add an admin-only endpoint to delete products
 /prep add versioning to the logs bucket
+/prep why does the deploy job fail on main?
+/prep review the retry logic in the payment client
 ```
+
+The last two ask for a diagnosis and a review, so `/prep` answers with a
+checked report instead of a brief, then offers a brief for the fixes.
 
 When `/prep` asks questions, answer in one short line: `2 is wrong, 5B`, or
 just `ok` to accept every recommendation.
@@ -146,8 +192,8 @@ just `ok` to accept every recommendation.
 Tool notes:
 
 - **Pi:** trust the project with `/trust`, because Pi loads project skills only
-  after that. If `/skill:prep` does not appear, turn on skill commands in
-  `/settings` (`enableSkillCommands`).
+  after that. If `/skill:prep` is not suggested, type it anyway; to have it
+  suggested, turn on `enableSkillCommands` in `/settings`.
 - **Kiro CLI:** a custom agent needs `"skill://.kiro/skills/**/SKILL.md"` in its
   `resources`.
 
@@ -156,14 +202,14 @@ Tool notes:
 | Step | What happens |
 |---|---|
 | 1. Start light | Notes today's date (to judge how current versions and docs are) and the commit. Checks whether a dedicated skill already covers this kind of task. |
-| 2. Understand | Restates the goal in plain words, and asks whether the request is a good way to reach it. Asks you only if the request can be read two ways. |
-| 3. Survey the code | Checks whether the feature already exists. Finds the closest existing example and every place it touches. Looks for earlier attempts in the git history and pull requests, including reverted ones. For a bug, reproduces it and traces it to the root cause. |
-| 4. Choose how | Reads the official docs for the versions in use: advisories for CVEs, the OWASP cheat sheets for security work, provider docs for Terraform. Sketches three options (minimal, clean, pragmatic), compares them on security, data, reliability, operations, cost and tests, argues against its favourite, and imagines how the change could fail. |
-| 5. Report and ask | One message: warnings, numbered findings each with evidence (a path, a command or a link), the options, and at most three questions, each with a recommended answer. |
+| 2. Understand | Restates the goal in plain words, and asks whether the request is a good way to reach it. Decides what you want back: a brief for a change, or a checked report for a review, a diagnosis or a question. |
+| 3. Survey the code | Checks whether the feature already exists. Finds the closest existing example and every place it touches. Looks for earlier attempts in the git history and pull requests, including reverted ones. Reproduces every problem it will report, walks the edge cases (a second run, missing input, no git, another OS), and for a bug traces it to the root cause. |
+| 4. Choose how | Reads the official docs for the versions in use: advisories for CVEs, the OWASP cheat sheets for security work, provider docs for Terraform. Sketches three options (minimal, clean, pragmatic), compares them on security, data, reliability, operations, cost and tests, argues against its favourite, and imagines how the change could fail. When it is not sure a fix works, it tries it in a throwaway copy of the project. |
+| 5. Report and ask | For a change: warnings, numbered findings each with evidence (a path, a command or a link), the options, and at most three questions, each with a recommended answer. For a review: the findings, most serious first, each shown happening and with a fix, then it stops. |
 | 6. Prove it can be done | Runs the safe proof commands now (unit tests, scanners, linters in check mode) and records what they print as the baseline. |
-| 7. Write the brief | Fills a fixed template (below). Every change gets a check that fails if the change is missing or wrong. |
+| 7. Draft the brief | Fills a fixed template (below) in the conversation. Every change gets a check that fails if the change is missing or wrong. |
 | 8. Check the brief | Rereads it as a stranger would. Verifies each change: every name, argument and setting against the code or the docs, one example walked through, nothing that uses it broken. A second, cheaper model checks every path and page the brief cites. |
-| 9. Show it | Shows you the brief and asks whether to keep a record. Nothing is saved before you reply. |
+| 9. Show it | Shows you the brief and asks whether to keep a record. Nothing is saved before you approve it. |
 | 10. Finish | Saves the brief, writes the record if you agreed, and tells you how to start `/impl`. |
 
 A small, clear task gets short versions of every step.
@@ -171,7 +217,7 @@ A small, clear task gets short versions of every step.
 ## The brief
 
 Each brief is a Markdown file in `.briefs/`, named
-`<YYYY-MM-DD-HHMM>-<type>.md`, with these sections:
+`<YYYY-MM-DD-HHMMSS>-<type>.md`, with these sections:
 
 | Section | What it holds |
 |---|---|
@@ -224,7 +270,8 @@ The logs bucket keeps every overwritten or deleted object version for 90 days, t
 
 ## What /impl does
 
-1. Finds the newest brief in `.briefs/`, or the one you name, and says which.
+1. Finds the newest brief in `.briefs/` that is not done yet, or the one you
+   name, and says which.
 2. Reads the whole brief. Checks `git status`, and whether the code moved since
    the commit the brief was written against.
 3. Writes the new tests first and watches them fail for the reason the brief
@@ -234,7 +281,8 @@ The logs bucket keeps every overwritten or deleted object version for 90 days, t
 5. Reviews its own diff like a strict reviewer, and asks of each change: is it
    correct, does it make sense, and how do I know?
 6. Reports what changed, what each check returned, what is left for you
-   (commit, push, deploy), and what the brief got wrong or left out.
+   (commit, push, deploy), and what the brief got wrong or left out. When
+   every check passed, it marks the brief done, so it is not run twice.
 
 ## Safety
 
@@ -265,9 +313,19 @@ permissions are the lock:
 <details>
 <summary><b>Claude Code</b></summary>
 
-In the default mode, Claude Code asks before every file change and every
-command that is not read-only. To stop the prompts for the brief folders, add
-to `permissions.allow`:
+Since v2.1.283, Claude Code sessions in a terminal start in **auto mode**,
+where a classifier approves actions instead of you
+([permission modes](https://code.claude.com/docs/en/permission-modes)). For
+`/prep`, start in Manual mode, which asks before every change:
+
+```bash
+claude --permission-mode manual
+```
+
+Approve tests, scanners and writes to the brief folders, and decline anything
+else. The record step is one shell command (`cp` and `printf`): approve it, or
+answer A. To stop the prompts for the brief folders, add to
+`permissions.allow`:
 
 ```jsonc
 // .claude/settings.json
@@ -278,11 +336,17 @@ to `permissions.allow`:
 "Edit(~/.briefs/**)"
 ```
 
-For a hard guarantee during `/prep`, start the session with
-`claude --permission-mode dontAsk`. It then refuses everything that is not
-allowed, including test and scanner commands, so allow those too (for example
-`"Bash(npm test *)"`) or the brief marks the proof UNTESTED. Use a normal
-session for `/impl`, because it has to edit files.
+`/.briefs/**` means `.briefs` in the folder where the session starts, so start
+Claude Code in the repository root.
+
+For a stronger guard during `/prep`, start the session with
+`claude --permission-mode dontAsk`. It refuses everything you have not allowed,
+so also allow `"WebSearch"`, `"WebFetch"` and your test and scanner commands
+(for example `"Bash(npm test *)"`), or the brief marks those checks UNVERIFIED
+or UNTESTED. What you allow still runs and can write files, such as the caches
+and snapshots tests write. dontAsk also refuses the multiple-choice questions; `/prep` then
+asks them as plain text. Use a normal session for `/impl`, because it has to
+edit files.
 </details>
 
 <details>
@@ -366,6 +430,56 @@ In every run, project files stayed untouched during `/prep`, and a planted
 secret was never read or printed. An independent review by **Claude Opus**
 found 10 issues, mostly about secrets and live systems, and all are fixed.
 
+A second round compared reviews made with and without `/prep`. Without it, a
+model tested more and gave ready fixes, because `/prep` treated a review like
+a change to plan. So `/prep` now has a review mode, reproduces every problem it
+reports, walks the edge cases, and tries uncertain fixes in a throwaway copy.
+In the follow-up tests it answered a review with a checked report and no brief,
+and for a change it proved its plan in a throwaway clone (the new tests failed
+before the change and passed after) while saving nothing before approval.
+
+A third round compared two reviews of the installer, one with `/prep` and one
+without. With `/prep` the review found more real problems, reproduced each one
+and tried its fixes in a copy, but it ran the installer without reading the
+skill text it installs, which the other review did. Both sets of findings are
+fixed: running the installer again keeps your edits, your own links are left
+alone, `/prep` reviews read docs and prompts as well as running the code, its
+throwaway copy includes uncommitted changes, and its before-and-after check
+sees untracked files.
+
+A fourth round did the same again. The two reviews found different problems,
+and all of them are fixed:
+- a Windows clone got the committed links as text files, and the installer
+  skipped them;
+- a copy you edited was refreshed over your edit;
+- a second brief in the same minute could sort before the first, so `/impl`
+  took the older one (names now include seconds);
+- the throwaway copy could push to your repository (its link is now cut), and
+  failed without a clear message in a repository with no commits.
+
+`/prep` reviews now also check where one part's output feeds another, because
+the brief-name bug sat between prep and impl.
+
+A fifth review, of the fixed version, found that one of those fixes had a
+side effect: on a Windows clone the installer replaced the text-file links
+with copies by itself, and git then refused to switch to a branch without
+those links. It is now a choice you make (`--copies`), with an undo
+(`--undo-copies`), and the installer explains both. The same review found
+that the throwaway copy failed with three common git settings
+(`diff.noprefix`, `diff.external`, `color.ui=always`) and left a folder
+behind when it failed, that the installer wrote to `~/.briefs/` although it
+said it did not, and that a link inside a linked skills folder did not open.
+All are fixed.
+
+The installer and the commands in the skills pass 76 checks: no git, a
+subfolder, a second run, upgrades, your edits, copy mode, edited copies,
+copies from older installers, your own links and folders, a linked skills
+folder, a worktree, Windows line endings, Windows clones with `--copies` and
+`--undo-copies`, the choice of tools, unknown names and options, the throwaway
+copy and the brief names. Windows was simulated on Linux (git without link
+support, and an `ln` that copies as Git Bash does), not run on a real
+Windows machine.
+
 ## Limitations
 
 - The safety rules are instructions to the model, not a sandbox. Use your
@@ -387,6 +501,10 @@ files, so after editing them, rebuild it:
 python3 build_installer.py
 ```
 
+The build also adds the new versions to `shipped-versions.txt`. Commit that
+file with the installer, so that later installers recognise those versions and
+update them without asking.
+
 ## Remove
 
 The installer has no uninstall step, so removal is manual. In the repository:
@@ -397,8 +515,11 @@ rm -rf .agents/skills/prep .agents/skills/impl \
        .kiro/skills/prep .kiro/skills/impl
 ```
 
-Keep or delete `.briefs/` (your briefs) and `~/.briefs/` (your record) as you
-like.
+If you used `--copies` on a clone without link support, run
+`bash install-prep.sh --undo-copies` first, or git will not see that the links
+are gone. `.git/prep-install/` may hold a new version the installer kept for
+you; delete it too. Keep or delete `.briefs/` (your briefs) and `~/.briefs/`
+(your record) as you like.
 
 ## Ideas borrowed
 
