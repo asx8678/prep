@@ -66,9 +66,11 @@ shipped='
 impl 4dada40bd9c8524eb8e171916c4131e813bd37da
 impl 81b97e5864aadc388e29ef37d6ca22bb696fbb7e
 impl de458369c8fc8ccab0b721f3462b17753786ca74
+impl e43a40b3611cd1ce5144cf6ac68b9c7258a09cdb
 prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
 prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
 prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc
+prep 8fb5cc2a1d2e8258d4e3c598c0eb7d47861974c0
 prep 9957bab37874cc5af42717499fa1b8ff27d00829
 prep d949b43a3b0afb75b12ea76064fe845e2378099b
 prep e32bea4be892ce9652b44ef24c24b15afb63b3cb
@@ -212,10 +214,11 @@ person second.
   record names where a secret is stored, never its value.
 - Spend effort where it changes the brief. Search before you read, with
   `git grep -n --untracked <word>` rather than `grep -r`: it skips files git
-  ignores, such as `.env` and build output. Read only what the task touches,
-  and stop when more reading would not change what you write. Keep command
-  output short, because it is re-sent on every later step: `git log -n 20`,
-  `git show --stat`, `| tail -n 40`, a scanner's `--severity HIGH,CRITICAL`.
+  ignores, such as build output, and `.env` if git ignores it. Read only
+  what the task touches, and stop when more reading would not change what
+  you write. Keep command output short, because it is re-sent on every later
+  step: `git log -n 20`, `git show --stat`, `| tail -n 40`, a scanner's
+  `--severity HIGH,CRITICAL`.
 - Make answering easy: plain words, short messages, statements and questions
   numbered in one list, each question's options lettered, and your tool's
   multiple-choice questions if it has them (if they are refused, as in
@@ -234,9 +237,8 @@ person second.
   task), `tasks/` (a copy of each recorded brief) and
   `skills/<type>/SKILL.md` (the dedicated skills).
 
-Use the full home path from step 1 instead of `~`, because some tools ask for
-approval on every path that starts with `~`. The project is the name of the
-repository's top folder. Log lines look like this:
+Use the full home path from step 1 instead of `~`. The project is the name of
+the repository's top folder. Log lines look like this:
 
 ```
 2026-11-11 | payments-api | fix-cves | briefed | Update vulnerable packages in the api service
@@ -389,8 +391,9 @@ most likely reasons, and plan how the brief prevents or detects each one.
 
 When you are not sure a fix works, try it in a throwaway copy, never in the
 project. This copies the committed files and their uncommitted changes, but
-no untracked or ignored files such as `.env`, cuts the copy's link to the
-project so nothing can be pushed back, and prints where the copy is:
+no submodules and no untracked or ignored files such as `.env`, cuts the
+copy's link to the project so nothing can be pushed back, and prints where
+the copy is:
 
 ```
 r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && {
@@ -502,7 +505,7 @@ the smallest useful check part of the task. Typical proof:
 
 | Kind of task | Proof |
 |---|---|
-| New feature | its tests pass, and the running app shows it working |
+| New feature | its tests pass, and a run of the app shows it working |
 | Behaviour change | updated tests pass, and the old behaviour is gone where intended |
 | Bug fix | a test or command that fails before the fix and passes after |
 | Dependency or security update | the scanner no longer reports the targeted CVEs and shows no new HIGH or CRITICAL ones, tests pass, the app starts |
@@ -540,7 +543,7 @@ nothing under Open questions would change the work. Otherwise set Status to
 ### 9. Show the brief and ask about a record
 
 Show the full brief, after the step 5 report if you did not stop there, and
-ask for corrections. In the same message, ask:
+ask for corrections. In the same message, ask in plain text:
 
 > Keep a record of this task on this computer?
 > - A. No.
@@ -588,9 +591,9 @@ After the reply, do these in order:
    if you do not have it.
 
 Looking back: list the logged types with
-`grep -v '^<!--' <log> | cut -d'|' -f3 | sort | uniq -c` and pick those of
-the same kind, by meaning; if one matches under another name, use that name
-for this task too.
+`grep -F '| briefed |' <log> | cut -d'|' -f3 | sort | uniq -c` and pick
+those of the same kind, by meaning; if one matches under another name, use
+that name for this task too.
 If none match, say so and move on. Otherwise get their lines with
 `grep -F '| <type> |' <log>`, tell the person how many there were, when and
 in which projects, and read the three newest of their copies in
@@ -670,8 +673,8 @@ missing access, steps that cannot be undone, and risks the person accepted.
 ## Proof
 For the implementing session: exact commands, the result that means success, and what each
 printed when you ran it today (the baseline), or UNTESTED with the reason. Each check shows
-the problem before the change; one more runs the project's tests to show nothing else
-broke. None of them may deploy, apply or migrate.
+the problem before the change; one more runs the project's tests, if any, to show nothing
+else broke. None of them may deploy, apply or migrate.
 After deploy, for the person: checks that need the change live, such as a health check.
 
 ## Sources
@@ -709,10 +712,10 @@ their corrections.
 ## Steps
 
 1. Find the brief. Use the file the person named after the command.
-   Otherwise use the newest brief that is not done: the `.md` file in
-   `.briefs/` whose name sorts last (names start with the date and time)
-   and whose Status is not "done". Say in one line which file you use. If
-   there is none, say so and stop.
+   Otherwise use the newest brief that is not done: of the files in
+   `.briefs/` whose names start with a date and time and whose Status is
+   not "done", the one that sorts last. Say in one line which file you use.
+   If there is none, say so and stop.
 2. Read the whole brief before you change anything. If its Status is "has
    open questions", show those questions and wait for the answers. Run
    `git status --short`. If there are uncommitted changes outside
