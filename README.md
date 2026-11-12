@@ -153,15 +153,63 @@ Notes:
 - Older versions of the installer kept a changed file as `SKILL.md.bak`. If
   you have one, check it and delete it; the installer points it out.
 
-**Without the installer:** copy the two folders in [`skills/`](skills) into your
-tool's skills folder, for example `.claude/skills/` in a project, or
-`~/.claude/skills/` to use them in every project with Claude Code. You can also
-upload them as custom skills in the Claude app: shorten each `description` to
-200 characters or fewer, the app's limit, and zip each folder so the zip holds
-`prep/SKILL.md` (see
+### Without the installer
+
+Copy the two folders in [`skills/`](skills) into your tool's skills folder:
+the one inside a repository for that project only, or the one in your home
+folder for every project.
+
+| Tool | One project | Every project |
+|---|---|---|
+| Claude Code | `.claude/skills/` | `~/.claude/skills/` |
+| Kiro CLI | `.kiro/skills/` | `~/.kiro/skills/` |
+| Pi | `.agents/skills/` | `~/.agents/skills/` |
+
+For example, for every project (keep the lines for the tools you use):
+
+```bash
+git clone https://github.com/asx8678/prep
+mkdir -p ~/.claude/skills ~/.kiro/skills ~/.agents/skills
+cp -R prep/skills/prep prep/skills/impl ~/.claude/skills/   # Claude Code
+cp -R prep/skills/prep prep/skills/impl ~/.kiro/skills/     # Kiro CLI
+cp -R prep/skills/prep prep/skills/impl ~/.agents/skills/   # Pi
+```
+
+To update, run `git -C prep pull` and the same `cp` lines again. They
+overwrite the copies, including any edits you made. For Pi and Kiro, also see
+the tool notes under [Use](#use).
+
+### Claude app (claude.ai)
+
+The app takes each skill as a zip, and limits its description to 200
+characters, so each skill needs a shorter one. Clone the repository, then in
+`prep/skills/prep/SKILL.md` and `prep/skills/impl/SKILL.md` replace the
+`description:` line with these, keeping the double quotes:
+
+```yaml
+description: "Turn a rough request into a precise, checkable task brief before any code is written, or a checked review when nothing should change yet. Use when the user types /prep or asks to plan a change."
+```
+
+```yaml
+description: "Implement the newest task brief from /prep: follow it, run its proof commands, and report what it missed. Use after /prep, in the same conversation or right after /clear."
+```
+
+Then zip each folder, so that the zip holds `prep/SKILL.md`:
+
+```bash
+cd prep/skills
+zip -r prep.zip prep
+zip -r impl.zip impl
+```
+
+In the app, go to Customize > Skills, click **+**, choose **Create skill**,
+then **Upload a skill**, and upload each zip. Skills need code execution to be
+turned on (see
 [How to create custom skills](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills)).
-Skills turned on there also load in Claude Code, as a second copy next to an
-installed one.
+Skills turned on there also load in Claude Code when you sign in with the same
+account, as a second copy next to an installed one. This way is untested: the
+app has no repository or git, and a new chat may not see a brief saved in an
+earlier one.
 
 ## Use
 
@@ -544,6 +592,17 @@ If you used `--copies` on a clone without link support, run
 are gone. `.git/prep-install/` may hold a new version the installer kept for
 you; delete it too. Keep or delete `.briefs/` (your briefs) and `~/.briefs/`
 (your record) as you like.
+
+If you copied the skills into your home folder, delete them there:
+
+```bash
+rm -rf ~/.claude/skills/prep ~/.claude/skills/impl \
+       ~/.kiro/skills/prep ~/.kiro/skills/impl \
+       ~/.agents/skills/prep ~/.agents/skills/impl
+```
+
+In the Claude app, delete each skill under Customize > Skills: click **...**
+next to its switch, then **Delete**.
 
 ## Ideas borrowed
 
