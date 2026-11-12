@@ -662,7 +662,7 @@ expect "26 a tool named on the command line: ~/.claude/skills/prep is linked" is
 refuse "26 a tool named on the command line: no ~/.kiro folder" test -e "$HOME/.kiro"
 
 echo "== 27. prep's example of a check that starts a server (in the skill text)"
-example="$(grep -o '`(<start> & [^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+example="$(grep -o '`([^`]*<start> & [^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
 expect "27 the example is in prep's text" test -n "$example"
 mkdir "$work/site" && printf 'ok\n' > "$work/site/ok.txt"
 port=$((10000 + $$ % 20000))
@@ -672,7 +672,7 @@ server="http.server --bind 127.0.0.1 $port"
 # the test would wait for it instead of failing.
 check_url() {
   ( cd "$work/site" && "$shell" -c "$(printf '%s' "$example" |
-    sed "s|<start>|python3 -m $server|; s|<url>|http://127.0.0.1:$port/$1|")" ) > "$work/out" 2>&1
+    sed "s|<start>|python3 -m $server|; s|<url>|http://127.0.0.1:$port/$1|g")" ) > "$work/out" 2>&1
   rc=$?
 }
 # no_server: waits until the server is gone, because kill does not wait for
@@ -693,7 +693,16 @@ no_server
 check_url missing.txt
 refuse "27 with a URL that does not exist the check fails" test "$rc" -eq 0
 expect "27 no server is left running" no_server
-# A failed check must not leave a server behind either.
+# A server that was there before the check: the test's own, started outside
+# the script's jobs so that stopping it prints nothing.
+( cd "$work/site" && exec python3 -m $server > /dev/null 2>&1 & )
+curl -s -o /dev/null --retry 5 --retry-connrefused "http://127.0.0.1:$port/ok.txt"
+check_url ok.txt
+same "27 with a server that already answers, the check fails" "$rc" 1
+check_url missing.txt
+same "27 the same for a URL that does not exist there" "$rc" 1
+# This stops the test's own server; a failed check must not leave one behind
+# either.
 pkill -f "$server"
 
 echo "== 28. The end-to-end cases tell a right fix from a wrong one"
@@ -832,6 +841,32 @@ same "29 old against new: exit 0" "$rc" 0
 same "29 old against new: claude plugin eval is called twice" "$(($(ls "$calls" 2>/dev/null | wc -l)))" 2
 same "29 old against new: neither call asks for runs without the skills" \
   "$(($(cat "$calls"/*/args 2>/dev/null | grep -o -e '--ablation none ' | wc -l)))" 2
+rm -rf "$c/evals/results"
+compare 0 --runs 1
+same "29 without --case: exit 64" "$rc" 64
+same "29 without --case: claude plugin eval is not called" "$(($(ls "$calls" 2>/dev/null | wc -l)))" 0
+refuse "29 without --case: no results folder is made" test -e "$c/evals/results"
+compare 0 --case='e2e-*' --runs 1
+same "29 --case=<glob> names the cases too: exit 0" "$rc" 0
+# The fake claude writes a result without cases, so the table gets one from
+# here: two runs of one end-to-end case on each arm.
+# table_run PREP IMPL FIXED: a run as the eval tool records it, with true or
+# false for each of the three graders
+table_run() {
+  printf '{"error": null, "graders": [{"name": "prep-fired", "passed": %s}, {"name": "impl-fired", "passed": %s}, {"name": "git-ran", "passed": true}, {"name": "second-place-fixed", "passed": %s}]}' "$@"
+}
+# table_result RUN RUN: the result file of one arm
+table_result() {
+  printf '{"cases": [{"name": "e2e-second-place", "arms": {"with": [%s, %s]}}], "costUsd": 0, "durationSeconds": 0, "partial": false}\n' "$@"
+}
+mkdir -p "$work/table/old" "$work/table/new"
+table_result "$(table_run true true true)" "$(table_run false false false)" > "$work/table/old/aggregate-result.json"
+table_result "$(table_run true true true)" "$(table_run true true true)" > "$work/table/new/aggregate-result.json"
+python3 -I "$repo/evals/table.py" "$work/table" > "$work/out" 2>&1
+same "29 the table counts a result only in runs where both skills started" \
+  "$(awk '$2 == "second-place-fixed" { print $3, $4 }' "$work/out")" "1/1 2/2"
+expect "29 the table lists a run where prep did not start as dropped" \
+  grep -q "dropped: e2e-second-place, old: failed prep-fired" "$work/out"
 same "29 nothing is written to this repository's evals/results/" "$(ls -A "$repo/evals/results" 2>/dev/null)" "$results_before"
 
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
