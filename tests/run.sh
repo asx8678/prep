@@ -82,11 +82,22 @@ new_repo() {
     git -C "$r" add a.txt && git -C "$r" commit -q -m first
 }
 
+homes=0
+# new_home: makes HOME a new, empty folder
+new_home() {
+  homes=$((homes + 1))
+  export HOME="$work/home$homes"
+  mkdir -p "$HOME"
+}
+
 fake_bin=""
-# run DIR [ARGS...]: runs the installer in DIR; sets $rc, keeps the output in $work/out
+# run DIR [ARGS...]: runs the installer in DIR; sets $rc, keeps the output in
+# $work/out. The menu gets $answers as its input, which is nothing unless a
+# check sets it: answers='1\n3\n' run DIR
 run() {
   local dir="$1"; shift
-  ( cd "$dir" && PATH="${fake_bin:+$fake_bin:}$real_path" "$shell" "$installer" "$@" ) > "$work/out" 2>&1
+  printf '%b' "${answers:-}" |
+    ( cd "$dir" && PATH="${fake_bin:+$fake_bin:}$real_path" "$shell" "$installer" "$@" ) > "$work/out" 2>&1
   rc=$?
 }
 
@@ -131,13 +142,13 @@ expect "2 prep is at most $max_prep_bytes bytes" in_range "$(($(wc -c < "$repo/s
 
 echo "== 3. Not a git repository"
 mkdir "$work/nogit"
-run "$work/nogit"
+run "$work/nogit" install
 same "3 exit 1" "$rc" 1
 expect "3 nothing is written" is_empty_dir "$work/nogit"
 
 echo "== 4. A fresh install"
 new_repo; a="$r"
-run "$a"
+run "$a" install
 same "4 exit 0" "$rc" 0
 for name in prep impl; do
   expect "4 .agents/skills/$name/SKILL.md is the skill" is_skill "$a/.agents/skills/$name/SKILL.md" "$name"
@@ -150,22 +161,22 @@ expect "4 .briefs/ exists" test -d "$a/.briefs"
 expect "4 nothing is written to HOME" is_empty_dir "$HOME"
 new_repo; sub="$r"
 mkdir -p "$sub/deep/down"
-run "$sub/deep/down"
+run "$sub/deep/down" install
 expect "4 from a subfolder: the skills go to the root" is_skill "$sub/.agents/skills/prep/SKILL.md" prep
 refuse "4 from a subfolder: nothing is put in the subfolder" test -e "$sub/deep/down/.agents"
 
 echo "== 5. A second run"
 before="$(tree "$a")"
-run "$a"
+run "$a" install
 same "5 exit 0" "$rc" 0
 expect "5 nothing changes" test "$(tree "$a")" = "$before"
 
 echo "== 6. An upgrade"
 new_repo; up="$r"
-run "$up"
+run "$up" install
 if old_version prep "$up/.agents/skills/prep/SKILL.md"; then
   refuse "6 (setup) the older version differs from today's" is_skill "$up/.agents/skills/prep/SKILL.md" prep
-  run "$up"
+  run "$up" install
   same "6 exit 0" "$rc" 0
   expect "6 an older shipped version is replaced" is_skill "$up/.agents/skills/prep/SKILL.md" prep
   refuse "6 no new version is left waiting" test -e "$up/.git/prep-install/prep/SKILL.md"
@@ -175,10 +186,10 @@ fi
 
 echo "== 7. Your edit"
 new_repo; ed="$r"
-run "$ed"
+run "$ed" install
 add_rule "$ed/.agents/skills/prep/SKILL.md"
 sum="$(cksum < "$ed/.agents/skills/prep/SKILL.md")"
-run "$ed"
+run "$ed" install
 same "7 exit 0" "$rc" 0
 same "7 an edited skill file is kept" "$(cksum < "$ed/.agents/skills/prep/SKILL.md")" "$sum"
 expect "7 the new version waits in .git/prep-install/" is_skill "$ed/.git/prep-install/prep/SKILL.md" prep
@@ -186,20 +197,21 @@ expect "7 the other skill stays up to date" is_skill "$ed/.agents/skills/impl/SK
 
 echo "== 8. The choice of tools, and wrong arguments"
 new_repo; t="$r"
-run "$t" claude
+run "$t" install claude
 expect "8 claude: .claude/skills/prep is linked" is_link_to "$t/.claude/skills/prep" "$links_to/prep"
 refuse "8 claude: no .kiro folder" test -e "$t/.kiro"
 expect "8 claude: the real copy is in .agents/skills" is_skill "$t/.agents/skills/impl/SKILL.md" impl
 new_repo; t="$r"
-run "$t" kiro pi
+run "$t" install kiro pi
 expect "8 kiro pi: .kiro/skills/impl is linked" is_link_to "$t/.kiro/skills/impl" "$links_to/impl"
 refuse "8 kiro pi: no .claude folder" test -e "$t/.claude"
 new_repo; t="$r"
-run "$t" CLAUDE
+run "$t" install CLAUDE
 expect "8 CLAUDE in upper case is accepted" is_link_to "$t/.claude/skills/prep" "$links_to/prep"
 new_repo; t="$r"
 clean="$(tree "$t")"
-for args in "codex" "--bogus" "--copies --undo-copies"; do
+for args in "codex" "--bogus" "--copies --undo-copies" "--global --copies" "--global --undo-copies" \
+  "remove claude" "update kiro"; do
   # $args is not quoted on purpose: each word is one argument.
   run "$t" $args
   same "8 '$args': exit 2" "$rc" 2
@@ -215,7 +227,7 @@ new_repo; own="$r"
 mkdir -p "$own/.claude/skills" "$own/mine" "$own/.kiro/skills/impl"
 ln -s ../../mine "$own/.claude/skills/prep"
 printf 'mine\n' > "$own/.kiro/skills/impl/note.txt"
-run "$own"
+run "$own" install
 same "9 exit 0" "$rc" 0
 expect "9 your own link is left alone" is_link_to "$own/.claude/skills/prep" ../../mine
 expect "9 your own folder is left alone" test -f "$own/.kiro/skills/impl/note.txt"
@@ -235,7 +247,7 @@ chmod +x "$work/ln-fails/ln" "$work/ln-copies/ln"
 for kind in ln-fails ln-copies; do
   fake_bin="$work/$kind"
   new_repo; c="$r"
-  run "$c"
+  run "$c" install
   same "10 $kind: exit 0" "$rc" 0
   for tool in claude kiro; do
     for name in prep impl; do
@@ -249,7 +261,7 @@ for kind in ln-fails ln-copies; do
   sum="$(cksum < "$c/.claude/skills/prep/SKILL.md")"
   : > "$c/.kiro/skills/prep/.installed-copy"
   if old_version prep "$c/.kiro/skills/prep/SKILL.md"; then
-    run "$c"
+    run "$c" install
     same "10 $kind: an edited copy is kept" "$(cksum < "$c/.claude/skills/prep/SKILL.md")" "$sum"
     expect "10 $kind: a copy from an older installer is refreshed" is_skill "$c/.kiro/skills/prep/SKILL.md" prep
   else
@@ -262,7 +274,7 @@ echo "== 11. A skills folder that is a link to somewhere else"
 new_repo; lk="$r"
 mkdir -p "$work/elsewhere" "$lk/.claude"
 ln -s "$work/elsewhere" "$lk/.claude/skills"
-run "$lk"
+run "$lk" install
 same "11 exit 0" "$rc" 0
 expect "11 the skill opens through the linked folder" is_skill "$lk/.claude/skills/prep/SKILL.md" prep
 expect "11 it is a marked copy, because a link would not open" is_copy "$work/elsewhere/prep"
@@ -272,12 +284,12 @@ echo "== 12. A git worktree"
 new_repo; main="$r"
 wt="$work/worktree"
 git -C "$main" worktree add -q "$wt" -b side
-run "$wt"
+run "$wt" install
 same "12 exit 0" "$rc" 0
 expect "12 the skills are installed in the worktree" is_skill "$wt/.agents/skills/prep/SKILL.md" prep
 refuse "12 nothing is put in the main folder" test -e "$main/.agents"
 add_rule "$wt/.agents/skills/prep/SKILL.md"
-run "$wt"
+run "$wt" install
 stage="$(cd "$wt" && git rev-parse --git-path prep-install)"
 case "$stage" in /*) ;; *) stage="$wt/$stage" ;; esac
 expect "12 the kept new version is in the worktree's git folder" is_skill "$stage/prep/SKILL.md" prep
@@ -285,26 +297,26 @@ refuse "12 that git folder is not inside the worktree" test -d "$wt/.git"
 
 echo "== 13. Windows line endings"
 new_repo; crlf="$r"
-run "$crlf"
+run "$crlf" install
 git -C "$crlf" config core.autocrlf true
 f="$crlf/.agents/skills/prep/SKILL.md"
 awk '{ printf "%s\r\n", $0 }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 refuse "13 (setup) the installed file now has Windows line endings" is_skill "$f" prep
-run "$crlf"
+run "$crlf" install
 same "13 exit 0" "$rc" 0
 expect "13 with core.autocrlf=true the file is updated" is_skill "$f" prep
 refuse "13 and it is not kept as an edit of yours" test -e "$crlf/.git/prep-install/prep/SKILL.md"
 
 echo "== 14. A clone without link support (the default on Windows)"
 new_repo; win="$r"
-run "$win"
+run "$win" install
 git -C "$win" add -A . && git -C "$win" commit -q -m "add the skills"
 git -C "$win" config core.symlinks false
 rm "$win/.claude/skills/prep" "$win/.claude/skills/impl" "$win/.kiro/skills/prep" "$win/.kiro/skills/impl"
 git -C "$win" checkout -q -- .claude .kiro
 fake_bin="$work/ln-copies"
 expect "14 (setup) git checks a link out as a small text file" is_text_link "$win/.claude/skills/prep" "$links_to/prep"
-run "$win"
+run "$win" install
 same "14 exit 0" "$rc" 0
 for tool in claude kiro; do
   for name in prep impl; do
@@ -312,7 +324,7 @@ for tool in claude kiro; do
   done
 done
 same "14 git status stays clean" "$(git -C "$win" status --short)" ""
-run "$win" --copies
+run "$win" install --copies
 same "14 --copies: exit 0" "$rc" 0
 expect "14 --copies: a marked copy replaces the text file" is_copy "$win/.claude/skills/prep"
 expect "14 --copies: the copy is the skill" is_skill "$win/.claude/skills/prep/SKILL.md" prep
@@ -323,6 +335,11 @@ same "14 --undo-copies: exit 0" "$rc" 0
 expect "14 --undo-copies: the text file is back" is_text_link "$win/.claude/skills/prep" "$links_to/prep"
 expect "14 --undo-copies: an edited copy is kept" is_copy "$win/.kiro/skills/impl"
 same "14 --undo-copies: git status stays clean" "$(git -C "$win" status --short)" ""
+run "$win" install --copies
+run "$win" remove
+same "14 remove: exit 0" "$rc" 0
+refuse "14 remove: a local copy is removed" test -e "$win/.claude/skills/prep"
+expect "14 remove: git sees that its link is gone" contains "$(git -C "$win" status --short)" "D .claude/skills/prep"
 fake_bin=""
 
 echo "== 15. prep's throwaway copy (the command in the skill text)"
@@ -439,6 +456,208 @@ expect "20 the command is in prep's text" test -n "$cmd"
 printf 'region = "eu"\ndb_password = "dummy-secret-value"\n' > "$work/settings.conf"
 same "20 a secret's key that is set: prints only a count" \
   "$("$shell" -c "$(printf '%s' "$cmd" | sed "s|<key>|db_password|; s|<file>|$work/settings.conf|")" 2>&1)" 1
+
+echo "== 21. A global install (--global)"
+new_home
+new_repo; g="$r"
+clean="$(tree "$g")"
+run "$g" install --global
+same "21 exit 0" "$rc" 0
+for name in prep impl; do
+  expect "21 ~/.agents/skills/$name/SKILL.md is the skill" is_skill "$HOME/.agents/skills/$name/SKILL.md" "$name"
+  for tool in claude kiro; do
+    expect "21 ~/.$tool/skills/$name links to $links_to/$name" is_link_to "$HOME/.$tool/skills/$name" "$links_to/$name"
+    expect "21 ~/.$tool/skills/$name/SKILL.md opens" is_skill "$HOME/.$tool/skills/$name/SKILL.md" "$name"
+  done
+done
+expect "21 nothing is written to the repository it is run in" test "$(tree "$g")" = "$clean"
+refuse "21 no .briefs/ is made in that repository" test -e "$g/.briefs"
+refuse "21 ~/.briefs/ is not made" test -e "$HOME/.briefs"
+refuse "21 no empty folder for waiting versions is left" test -e "$HOME/.agents/prep-install"
+before="$(tree "$HOME")"
+run "$work/nogit" install --global
+same "21 outside a repository: exit 0" "$rc" 0
+expect "21 outside a repository: nothing is written there" is_empty_dir "$work/nogit"
+expect "21 a second run changes nothing" test "$(tree "$HOME")" = "$before"
+new_home
+run "$work/nogit" install --global claude
+expect "21 claude: ~/.claude/skills/prep is linked" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+refuse "21 claude: no ~/.kiro folder" test -e "$HOME/.kiro"
+
+echo "== 22. A global install next to what is already in the home folder"
+new_home
+mkdir -p "$HOME/.claude/skills/prep" "$HOME/.claude/skills/impl" "$HOME/.claude/skills/other" \
+  "$HOME/.kiro/skills/impl" "$HOME/mine"
+cp "$repo/skills/prep/SKILL.md" "$HOME/.claude/skills/prep/"
+cp "$repo/skills/impl/SKILL.md" "$HOME/.claude/skills/impl/"
+add_rule "$HOME/.claude/skills/impl/SKILL.md"
+sum="$(cksum < "$HOME/.claude/skills/impl/SKILL.md")"
+printf 'another skill\n' > "$HOME/.claude/skills/other/SKILL.md"
+printf 'mine\n' > "$HOME/.kiro/skills/impl/note.txt"
+ln -s ../../mine "$HOME/.kiro/skills/prep"
+other="$(tree "$HOME/.claude/skills/other")"
+run "$work/nogit" install --global
+same "22 exit 0" "$rc" 0
+expect "22 a skill copied by hand becomes a link" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+same "22 a skill copied by hand and then edited is kept" "$(cksum < "$HOME/.claude/skills/impl/SKILL.md")" "$sum"
+expect "22 your own link is left alone" is_link_to "$HOME/.kiro/skills/prep" ../../mine
+expect "22 your own folder is left alone" test -f "$HOME/.kiro/skills/impl/note.txt"
+refuse "22 your own folder gets no skill file" test -e "$HOME/.kiro/skills/impl/SKILL.md"
+expect "22 another skill is left alone" test "$(tree "$HOME/.claude/skills/other")" = "$other"
+
+echo "== 23. Update"
+new_home
+run "$work/nogit" update --global
+same "23 nothing installed: exit 0" "$rc" 0
+expect "23 nothing installed: nothing is written" is_empty_dir "$HOME"
+run "$work/nogit" install --global claude
+if old_version prep "$HOME/.agents/skills/prep/SKILL.md"; then
+  run "$work/nogit" update --global
+  same "23 exit 0" "$rc" 0
+  expect "23 an older shipped version is replaced" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+else
+  bad "23 $no_history"
+fi
+expect "23 the tool that was set up keeps its link" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+refuse "23 a tool that was not set up is not added" test -e "$HOME/.kiro"
+add_rule "$HOME/.agents/skills/prep/SKILL.md"
+sum="$(cksum < "$HOME/.agents/skills/prep/SKILL.md")"
+run "$work/nogit" update --global
+same "23 an edited skill file is kept" "$(cksum < "$HOME/.agents/skills/prep/SKILL.md")" "$sum"
+expect "23 the new version waits in ~/.agents/prep-install/" is_skill "$HOME/.agents/prep-install/prep/SKILL.md" prep
+take="$(sed -n 's/^  Take it:  //p' "$work/out")"
+( cd "$work/nogit" && "$shell" -c "$take" ) > /dev/null 2>&1
+expect "23 the printed command that takes it works from another folder" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+new_home
+mkdir -p "$HOME/.claude/skills"
+cp -R "$repo/skills/prep" "$HOME/.claude/skills/prep"
+run "$work/nogit" update --global
+expect "23 a skill copied by hand counts as installed" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+new_repo; u="$r"
+run "$u" install kiro
+run "$u" update
+same "23 in a repository: exit 0" "$rc" 0
+refuse "23 in a repository: a tool that was not set up is not added" test -e "$u/.claude"
+
+echo "== 24. Remove"
+new_repo; gone="$r"
+clean="$(tree "$gone")"
+run "$gone" install
+run "$gone" remove
+same "24 in a repository: exit 0" "$rc" 0
+expect "24 in a repository: every file and link of the install is gone" test "$(tree "$gone")" = "$clean"
+for name in prep impl; do
+  for dir in .agents .claude .kiro; do
+    refuse "24 in a repository: $dir/skills/$name is gone" test -e "$gone/$dir/skills/$name"
+  done
+done
+expect "24 in a repository: .briefs/ stays" test -d "$gone/.briefs"
+new_home
+mkdir -p "$HOME/.agents/skills/mine" "$HOME/.claude/skills" "$HOME/.briefs"
+printf 'my skill\n' > "$HOME/.agents/skills/mine/SKILL.md"
+ln -s "$links_to/mine" "$HOME/.claude/skills/mine"
+printf 'my record\n' > "$HOME/.briefs/log.md"
+mine="$(tree "$HOME")"
+run "$work/nogit" install --global
+run "$work/nogit" remove --global
+same "24 --global: exit 0" "$rc" 0
+expect "24 --global: only what was there before is left" test "$(tree "$HOME")" = "$mine"
+refuse "24 --global: ~/.agents/skills/prep is gone" test -e "$HOME/.agents/skills/prep"
+expect "24 --global: the folders other skills use stay" test -d "$HOME/.claude/skills"
+run "$work/nogit" install --global
+add_rule "$HOME/.agents/skills/prep/SKILL.md"
+sum="$(cksum < "$HOME/.agents/skills/prep/SKILL.md")"
+printf 'notes\n' > "$HOME/.agents/skills/impl/notes.md"
+mkdir -p "$HOME/.agents/prep-install/prep"
+run "$work/nogit" remove --global
+same "24 a skill file you changed is kept" "$(cksum < "$HOME/.agents/skills/prep/SKILL.md")" "$sum"
+expect "24 and so are the links to it" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+refuse "24 the unchanged skill file is removed" test -e "$HOME/.agents/skills/impl/SKILL.md"
+refuse "24 and so are the links to it" test -L "$HOME/.claude/skills/impl"
+expect "24 a file of yours next to it is kept" test -f "$HOME/.agents/skills/impl/notes.md"
+refuse "24 the folder for waiting versions is removed" test -e "$HOME/.agents/prep-install"
+new_home
+mkdir -p "$HOME/.claude/skills" "$HOME/.kiro/skills/impl" "$HOME/mine"
+cp -R "$repo/skills/prep" "$HOME/.claude/skills/prep"
+ln -s ../../mine "$HOME/.claude/skills/impl"
+printf 'mine\n' > "$HOME/.kiro/skills/impl/note.txt"
+run "$work/nogit" remove --global
+refuse "24 a skill copied by hand is removed" test -e "$HOME/.claude/skills/prep"
+expect "24 your own link is left alone" is_link_to "$HOME/.claude/skills/impl" ../../mine
+expect "24 your own folder is left alone" test -f "$HOME/.kiro/skills/impl/note.txt"
+
+echo "== 25. The menu (no install, update or remove on the command line)"
+new_home
+new_repo; m="$r"
+clean="$(tree "$m")"
+answers='1\n1\n\n' run "$m"
+same "25 every project, install: exit 0" "$rc" 0
+expect "25 every project, install: the skills are in the home folder" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+expect "25 every project, install: nothing is written to the repository" test "$(tree "$m")" = "$clean"
+if old_version prep "$HOME/.agents/skills/prep/SKILL.md"; then
+  answers='1\n2\n' run "$m"
+  expect "25 every project, update: an older shipped version is replaced" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+else
+  bad "25 $no_history"
+fi
+before="$(tree "$HOME")"
+answers='2\n1\n\n' run "$m"
+expect "25 this repository, install: the skills are in the repository" is_skill "$m/.agents/skills/prep/SKILL.md" prep
+expect "25 this repository, install: the home folder is unchanged" test "$(tree "$HOME")" = "$before"
+answers='2\n3\n' run "$m"
+expect "25 this repository, remove: the repository is as it was" test "$(tree "$m")" = "$clean"
+expect "25 this repository, remove: the home folder is unchanged" test "$(tree "$HOME")" = "$before"
+answers='1\n3\n' run "$m"
+refuse "25 every project, remove: ~/.agents/skills/prep is gone" test -e "$HOME/.agents/skills/prep"
+new_home
+answers='1\n\n' run "$work/nogit"
+expect "25 outside a repository it asks only what to do" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+new_home
+answers='1\n\n' run "$m" --global
+expect "25 with --global it asks only what to do" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+new_home
+answers='1\n' run "$m" --copies
+same "25 --copies and every project: exit 2" "$rc" 2
+expect "25 --copies and every project: nothing is written" test "$(tree "$m")$(ls -A "$HOME")" = "$clean"
+for typed in 'q\n' '1\nq\n' '1\n1\nq\n'; do
+  answers="$typed" run "$m"
+  same "25 '$typed': exit 0" "$rc" 0
+  expect "25 '$typed': nothing is written" test "$(tree "$m")$(ls -A "$HOME")" = "$clean"
+done
+for typed in '' '\n' 'x\n' '3\n' '1\n9\n' '1\n' '1\n1\n' '1\n1\n9\n' '1\n1\n1\n2\n3\n\n'; do
+  answers="$typed" run "$m"
+  same "25 '$typed': exit 1" "$rc" 1
+  expect "25 '$typed': nothing is written" test "$(tree "$m")$(ls -A "$HOME")" = "$clean"
+done
+
+echo "== 26. The menu's choice of tools"
+new_home
+answers='1\n1\n2\n\n' run "$m"
+same "26 Kiro switched off: exit 0" "$rc" 0
+expect "26 Kiro switched off: ~/.claude/skills/prep is linked" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+refuse "26 Kiro switched off: no ~/.kiro folder" test -e "$HOME/.kiro"
+expect "26 nothing is written to the repository" test "$(tree "$m")" = "$clean"
+answers='1\n1\n1\n\n' run "$m"
+expect "26 Claude Code switched off later: its links stay" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+expect "26 Claude Code switched off later: Kiro is added" is_link_to "$HOME/.kiro/skills/prep" "$links_to/prep"
+new_home
+answers='1\n1\n2\n2\n\n' run "$m"
+expect "26 Kiro switched off and on again: ~/.kiro/skills/prep is linked" is_link_to "$HOME/.kiro/skills/prep" "$links_to/prep"
+new_home
+answers='1\n1\n3\n\n' run "$m"
+expect "26 Pi switched off: the real copy is still in ~/.agents/skills" is_skill "$HOME/.agents/skills/prep/SKILL.md" prep
+expect "26 Pi switched off: the others are linked" is_link_to "$HOME/.kiro/skills/impl" "$links_to/impl"
+new_home
+answers='1\n1\n1\n2\n\n' run "$m"
+same "26 only Pi left on: exit 0" "$rc" 0
+expect "26 only Pi: the skills are in ~/.agents/skills" is_skill "$HOME/.agents/skills/impl/SKILL.md" impl
+refuse "26 only Pi: no ~/.claude folder" test -e "$HOME/.claude"
+refuse "26 only Pi: no ~/.kiro folder" test -e "$HOME/.kiro"
+new_home
+answers='1\n1\n' run "$m" claude
+same "26 a tool named on the command line is not asked for: exit 0" "$rc" 0
+expect "26 a tool named on the command line: ~/.claude/skills/prep is linked" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
+refuse "26 a tool named on the command line: no ~/.kiro folder" test -e "$HOME/.kiro"
 
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]

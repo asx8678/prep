@@ -55,32 +55,45 @@ def skill_block(name: str, text: str) -> str:
 
 
 HEAD = r'''#!/usr/bin/env bash
-# Installs the "prep" and "impl" skills into the current repository.
+# Installs, updates or removes the "prep" and "impl" skills, in one
+# repository or for every project on this computer.
 #
 #   prep   turns a rough request into a checked task brief (read-only)
 #   impl   implements the newest brief
 #
 # One real copy of each lives in .agents/skills, which Pi reads directly.
 # Claude Code and Kiro CLI get links to those copies, so there is one file
-# to edit. Running this again updates the skills but keeps a skill file you
-# changed; the new version then waits in .git/prep-install/.
-# Run it from anywhere inside the repository:
-#   bash install-prep.sh               for Claude Code, Kiro CLI and Pi
-#   bash install-prep.sh claude kiro   only for the tools you name
+# to edit. These folders are in the root of the repository, or with --global
+# in your home folder. An update keeps a skill file you changed; the new
+# version then waits in .git/prep-install/, or in ~/.agents/prep-install/.
+#   bash install-prep.sh                    a menu: where, and what to do
+#   bash install-prep.sh install --global   no menu; --help lists the rest
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: bash install-prep.sh [claude] [kiro] [pi] [--copies | --undo-copies]
+Usage: bash install-prep.sh [install | update | remove] [--global]
+                            [claude] [kiro] [pi] [--copies | --undo-copies]
 
-Installs the prep and impl skills into the git repository you are in, for
-the tools you name, or for all three when you name none:
-  claude   Claude Code   links in .claude/skills
-  kiro     Kiro CLI      links in .kiro/skills
-  pi       Pi            reads .agents/skills directly
-The real copy always goes to .agents/skills, so Pi can use the skills
-whichever tools you name. Nothing is ever removed: to stop using a tool,
-delete its folder yourself.
+Without install, update or remove, a small menu asks where, what and, for
+an install, for which tools.
+
+  install   set up the prep and impl skills for the tools you name, or for
+            all three when you name none:
+              claude   Claude Code   links in .claude/skills
+              kiro     Kiro CLI      links in .kiro/skills
+              pi       Pi            reads .agents/skills directly
+            The real copy always goes to .agents/skills, so Pi can use the
+            skills whichever tools you name. Skills already there are
+            updated, and a skill file you changed is kept.
+  update    bring what is installed to the version inside this file, and
+            set up no tool that is not set up yet. For a newer version,
+            download this file again.
+  remove    delete what this installer made, for all three tools. A skill
+            file you changed is kept, and so are your briefs.
+
+  --global  use your home folder, so every project on this computer has
+            the skills. Without it: the git repository you are in.
 
 Only for a clone without link support (the default on Windows), where git
 checks out the committed links as small text files:
@@ -89,17 +102,18 @@ checks out the committed links as small text files:
 USAGE
 }
 
-tools="" copies=no undo=no
+action="" scope="" tools="" copies=no undo=no
 for arg in "$@"; do
   arg="$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')"
   case "$arg" in
+    install|update|remove) action="$arg" ;;
+    --global) scope=home ;;
     claude|kiro|pi)
       case " $tools " in *" $arg "*) ;; *) tools="$tools $arg" ;; esac ;;
     --copies) copies=yes ;;
     --undo-copies) undo=yes ;;
     -h|--help) usage; exit 0 ;;
-    -*) echo "Unknown option: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
-    *) echo "Unknown tool: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
+    *) echo "Unknown argument: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
   esac
 done
 if [ "$copies" = yes ] && [ "$undo" = yes ]; then
@@ -110,17 +124,71 @@ named="$tools"
 [ -n "$tools" ] || tools=" claude kiro pi"
 has() { case " $tools " in *" $1 "*) return 0 ;; esac; return 1; }
 
-if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-  echo "Run this inside a git repository: the skills and their briefs belong to one project." >&2
+repo="$(git rev-parse --show-toplevel 2>/dev/null)" || repo=""
+
+# The menu reads its answers as plain lines of input, so a script can answer
+# it too. Anything that is not one of the choices ends the run with nothing done.
+menu=no
+[ -n "$action" ] || [ "$undo" = yes ] || menu=yes
+# choose N [enter]: reads an answer from 1 to N into $answer. With "enter",
+# Enter alone is an answer too; the end of the input never is.
+choose() {
+  printf '> '
+  read -r answer || answer=end
+  case "$answer" in
+    q|Q) echo "Nothing done."; exit 0 ;;
+    [1-$1]) return 0 ;;
+    "") [ -z "${2:-}" ] || return 0 ;;
+  esac
+  echo "Not one of the choices, so nothing was done." >&2
+  exit 1
+}
+
+if [ "$menu" = yes ] && [ -z "$scope" ]; then
+  if [ -n "$repo" ]; then
+    cat <<WHERE
+Install, update or remove the prep and impl skills. Where?
+  1) Every project on this computer   $HOME
+  2) Only this repository             $repo
+  q) Quit
+WHERE
+    choose 2
+    case "$answer" in 1) scope=home ;; 2) scope=repo ;; esac
+    echo
+  else
+    # Outside a repository there is only one place.
+    scope=home
+  fi
+fi
+
+if [ "$scope" = home ]; then
+  if [ "$copies" = yes ] || [ "$undo" = yes ]; then
+    echo "--copies and --undo-copies are for a repository, not for your home folder." >&2
+    exit 2
+  fi
+  root="$HOME"
+  cd "$root"
+  # Outside every skills folder: Pi loads any SKILL.md below one.
+  stage="$root/.agents/prep-install"
+elif [ -n "$repo" ]; then
+  scope=repo
+  root="$repo"
+  cd "$root"
+  # Git never commits this folder.
+  stage="$(git rev-parse --git-path prep-install)"
+  case "$stage" in /*) ;; *) stage="$root/$stage" ;; esac
+else
+  echo "This is not inside a git repository. Run it inside one, or add --global" >&2
+  echo "to install for every project on this computer." >&2
   exit 1
 fi
-cd "$root"
 
 # Every version of each skill file this installer has written (git blob ids).
 # A file that matches one has no changes of yours, so it can be replaced.
 shipped='
 @SHIPPED@
 '
+is_shipped() { printf '%s\n' "$shipped" | grep -qxF "$1 $(git hash-object "$2" 2>/dev/null)"; }
 
 # A copy may be refreshed or removed when its SKILL.md is the same as the
 # source, or unchanged since this installer made it: the marker holds its id
@@ -131,7 +199,46 @@ copy_unchanged() {
   now="$(git hash-object "$target/SKILL.md" 2>/dev/null)" || return 1
   [ "$now" = "$made" ] && return 0
   [ "$now" = "$(git hash-object ".agents/skills/$name/SKILL.md" 2>/dev/null)" ] && return 0
-  [ -z "$made" ] && printf '%s\n' "$shipped" | grep -qxF "$name $now"
+  [ -z "$made" ] && is_shipped "$name" "$target/SKILL.md"
+}
+
+# What a tool's path for a skill holds now:
+#   none     nothing
+#   link     our link
+#   text     our link, checked out by git as a small text file
+#   copy     our copy, unchanged
+#   edited   our copy, with changes of yours
+#   other    a link, file or folder that is not ours
+# Our copy has the marker, or is a folder with nothing but a SKILL.md, which
+# is what copying a skill by hand leaves.
+state_of() {
+  local target="$1" name="$2"
+  local want="../../.agents/skills/$name"
+  if [ -L "$target" ]; then
+    if [ "$(readlink "$target")" = "$want" ]; then echo link; else echo other; fi
+  elif [ -f "$target" ]; then
+    if [ "$(cat "$target")" = "$want" ]; then echo text; else echo other; fi
+  elif [ ! -e "$target" ]; then
+    echo none
+  elif [ ! -f "$target/.installed-copy" ] && [ "$(ls -A "$target")" != SKILL.md ]; then
+    echo other
+  elif copy_unchanged "$target" "$name"; then
+    echo copy
+  else
+    echo edited
+  fi
+}
+
+set_up() {
+  local name
+  for name in prep impl; do
+    case "$(state_of ".$1/skills/$name" "$name")" in none|other) ;; *) return 0 ;; esac
+  done
+  return 1
+}
+installed() {
+  [ -e .agents/skills/prep/SKILL.md ] || [ -e .agents/skills/impl/SKILL.md ] ||
+    set_up claude || set_up kiro
 }
 
 # --undo-copies: put back the small text files that --copies replaced.
@@ -171,14 +278,120 @@ if [ "$undo" = yes ]; then
   exit 0
 fi
 
-echo "Installing the prep and impl skills for:$tools"
-echo "Into: $root"
-mkdir -p .briefs .agents/skills
+if [ "$menu" = yes ]; then
+  if installed; then now="installed"; else now="not installed"; fi
+  if [ -n "$named" ]; then for_tools="for:$named"; else for_tools="for the tools you choose next"; fi
+  cat <<WHAT
+The prep and impl skills are $now in $root
+  1) Install   $for_tools
+  2) Update    what is installed, to the version inside this file
+  3) Remove    what this installer made; a skill file you changed is kept
+  q) Quit
+WHAT
+  choose 3
+  case "$answer" in 1) action=install ;; 2) action=update ;; 3) action=remove ;; esac
+  echo
+fi
+if [ -n "$named" ] && [ "$action" != install ]; then
+  echo "Name tools only with install: $action works on everything that is installed." >&2
+  exit 2
+fi
 
-# New versions are written here first. Git never commits this folder.
-stage="$(git rev-parse --git-path prep-install)"
+if [ "$menu" = yes ] && [ "$action" = install ] && [ -z "$named" ]; then
+  box() { if has "$1"; then echo "[x]"; else echo "[ ]"; fi; }
+  flip() { if has "$1"; then tools="${tools/ $1/}"; else tools="$tools $1"; fi; }
+  # Only a number asks again, so this ends when the input does.
+  while :; do
+    cat <<TOOLS
+For which tools? A number switches one on or off; Enter alone goes on.
+  1) $(box claude) Claude Code   links in .claude/skills
+  2) $(box kiro) Kiro CLI      links in .kiro/skills
+  3) $(box pi) Pi            reads .agents/skills, where the real copy always goes
+  q) Quit
+TOOLS
+    choose 3 enter
+    case "$answer" in
+      1) flip claude ;;
+      2) flip kiro ;;
+      3) flip pi ;;
+      *) break ;;
+    esac
+    echo
+  done
+  if [ -z "$tools" ]; then
+    echo "No tool is switched on, so nothing was done." >&2
+    exit 1
+  fi
+  echo
+  # The commands printed at the end name the tools that were chosen here.
+  named="$tools"
+fi
+
 kept=""
 
+# Removes one skill: the real copy, and the links and copies made from it.
+# A real copy you changed stays, with its links, so that skill keeps working.
+remove_skill() {
+  local name="$1" tool target
+  local dir=".agents/skills/$name"
+  if [ -e "$dir/SKILL.md" ] && ! is_shipped "$name" "$dir/SKILL.md"; then
+    kept="$kept $dir/SKILL.md"
+    echo "Kept $name: $dir/SKILL.md has changes of yours."
+    return 0
+  fi
+  for tool in claude kiro; do
+    target=".$tool/skills/$name"
+    case "$(state_of "$target" "$name")" in
+      none) ;;
+      link|text|copy) rm -rf "$target"; echo "Removed $target" ;;
+      *) echo "Kept $target: it is not from this installer, or you changed it" ;;
+    esac
+  done
+  if [ -e "$dir/SKILL.md" ]; then
+    rm -f "$dir/SKILL.md"
+    echo "Removed $dir/SKILL.md"
+  fi
+  rmdir "$dir" 2>/dev/null || [ ! -e "$dir" ] || echo "Kept $dir: it holds other files"
+}
+
+if [ "$action" = remove ]; then
+  echo "Removing the prep and impl skills"
+  echo "From: $root"
+  # Git must see that a link is gone, so a local copy becomes the link again first.
+  [ "$scope" = home ] || undo_copies > /dev/null
+  for name in prep impl; do
+    remove_skill "$name"
+  done
+  rm -rf "$stage"
+  echo
+  echo "Done. Your briefs in .briefs/ and your record in ~/.briefs/ were not touched."
+  if [ -n "$kept" ]; then
+    echo "Not removed, because they have changes of yours:$kept"
+    echo "To remove one anyway, delete that file and run this again."
+  fi
+  exit 0
+fi
+
+if [ "$action" = update ]; then
+  if ! installed; then
+    echo "Nothing to update: the skills are not installed in $root"
+    exit 0
+  fi
+  tools=" pi"
+  for tool in claude kiro; do
+    if set_up "$tool"; then tools="$tools $tool"; fi
+  done
+  echo "Updating the prep and impl skills for:$tools"
+else
+  echo "Installing the prep and impl skills for:$tools"
+fi
+echo "Into: $root"
+# ~/.briefs is prep's record, which only /prep creates, and only after a yes.
+[ "$scope" = home ] || mkdir -p .briefs
+mkdir -p .agents/skills
+
+# New versions are written to $stage first. The commands printed for a kept
+# file have full paths, so they work from the folder you are in.
 install_skill_file() {
   local name="$1"
   local file=".agents/skills/$name/SKILL.md" new="$stage/$name/SKILL.md"
@@ -192,15 +405,15 @@ install_skill_file() {
   elif cmp -s "$file" "$new"; then
     rm -f "$new"
     echo "Up to date: $file"
-  elif printf '%s\n' "$shipped" | grep -qxF "$name $(git hash-object "$file")"; then
+  elif is_shipped "$name" "$file"; then
     mv "$new" "$file"
     echo "Updated $file"
   else
     kept="$kept $file"
     echo "Kept $file: it has changes of yours, so it was not replaced."
     echo "  The new version is in $new"
-    echo "  Compare:  git diff --no-index \"$file\" \"$new\""
-    echo "  Take it:  cp \"$new\" \"$file\""
+    echo "  Compare:  git diff --no-index \"$root/$file\" \"$new\""
+    echo "  Take it:  cp \"$new\" \"$root/$file\""
   fi
 }
 
@@ -214,44 +427,37 @@ link_skill() {
   local tool_dir="$1" name="$2"
   local target="$tool_dir/$name" mark=".installed-copy" want="../../.agents/skills/$name"
   mkdir -p "$tool_dir"
-  if [ -L "$target" ]; then
-    if [ "$(readlink "$target")" = "$want" ]; then
+  case "$(state_of "$target" "$name")" in
+    link)
       echo "Linked $target"
-    else
-      echo "Skipped $target: it is a link of yours, to $(readlink "$target")"
-    fi
-    return 0
-  fi
-  # Without link support (core.symlinks=false, the default on Windows), git
-  # checks out a committed link as a small file that holds its target. Leave
-  # it alone and explain the choices at the end. Only with --copies: replace
-  # it with a copy, and tell git to ignore that local change so it is never
-  # committed. Git then refuses to switch to a branch without this link, so
-  # this is never done unasked.
-  if [ -f "$target" ] && [ "$(cat "$target")" = "$want" ]; then
-    if [ "$copies" != yes ]; then
-      textlinks="$textlinks $target"
-      echo "Skipped $target: git checked this link out as a small text file"
-      return 0
-    fi
-    rm -f "$target"
-    git update-index --skip-worktree -- "$target" 2>/dev/null || true
-    local exclude; exclude="$(git rev-parse --git-path info/exclude)"
-    mkdir -p "$(dirname "$exclude")"
-    grep -qxF "/$target/" "$exclude" 2>/dev/null || printf '/%s/\n' "$target" >> "$exclude"
-    hidden="$hidden $target"
-  fi
-  if [ -e "$target" ] && [ ! -f "$target/$mark" ]; then
-    echo "Skipped $target: it already exists and was not made by this installer"
-    return 0
-  fi
-  if [ -e "$target" ] && ! copy_unchanged "$target" "$name"; then
-    kept="$kept $target"
-    echo "Kept $target: you changed this copy, so it was not refreshed."
-    echo "  Copies are made from .agents/skills/$name/SKILL.md: make your change there,"
-    echo "  then delete $target and run this again."
-    return 0
-  fi
+      return 0 ;;
+    other)
+      echo "Skipped $target: it already exists and was not made by this installer"
+      return 0 ;;
+    edited)
+      kept="$kept $target"
+      echo "Kept $target: you changed this copy, so it was not refreshed."
+      echo "  Copies are made from .agents/skills/$name/SKILL.md: make your change there,"
+      echo "  then delete $target and run this again."
+      return 0 ;;
+    text)
+      # Without link support (core.symlinks=false, the default on Windows), git
+      # checks out a committed link as a small file that holds its target. Leave
+      # it alone and explain the choices at the end. Only with --copies: replace
+      # it with a copy, and tell git to ignore that local change so it is never
+      # committed. Git then refuses to switch to a branch without this link, so
+      # this is never done unasked.
+      if [ "$copies" != yes ]; then
+        textlinks="$textlinks $target"
+        echo "Skipped $target: git checked this link out as a small text file"
+        return 0
+      fi
+      git update-index --skip-worktree -- "$target" 2>/dev/null || true
+      local exclude; exclude="$(git rev-parse --git-path info/exclude)"
+      mkdir -p "$(dirname "$exclude")"
+      grep -qxF "/$target/" "$exclude" 2>/dev/null || printf '/%s/\n' "$target" >> "$exclude"
+      hidden="$hidden $target" ;;
+  esac
   rm -rf "$target"
   # The link must also open: it does not when the tool folder is itself a
   # link to a folder somewhere else.
@@ -269,21 +475,27 @@ link_skill() {
 hidden="" textlinks=""
 
 for tool in claude kiro; do
-  has "$tool" || continue
+  if ! has "$tool"; then
+    if set_up "$tool"; then
+      echo "Left as it is: .$tool/skills was set up before. Leaving a tool out does not remove it."
+    fi
+    continue
+  fi
   for name in prep impl; do
     link_skill ".$tool/skills" "$name"
   done
 done
-
-# Nothing is written outside this repository. The record of tasks in the home
-# folder is created by /prep, and only after you say yes at the end of one.
+# Only a new version that is waiting for you stays in $stage.
+rmdir "$stage/prep" "$stage/impl" "$stage" 2>/dev/null || true
 
 # What to do next, only for the tools that were set up.
-cat <<'DONE'
+notes() {
+cat <<DONE
 
-Done. The skills are in .agents/skills/prep and .agents/skills/impl.
-To change one, edit its SKILL.md there; running this again keeps your edits.
-Briefs go to .briefs/ in this repository.
+Done. The skills are in $root/.agents/skills
+(prep and impl). To change one, edit its SKILL.md there; running this
+again keeps your edits.
+Briefs go to .briefs/ in the project you run /prep in.
 The record of tasks lives in ~/.briefs/ and is shared by every
 repository on this computer. Nothing is written there until you say yes
 at the end of a /prep.
@@ -302,16 +514,22 @@ cat <<'FRESH'
   command to pick another one.
 FRESH
 if has pi || has kiro; then echo; fi
-if has pi; then cat <<'PI_USE'
+if has pi && [ "$scope" = repo ]; then cat <<'PI_TRUST'
   Pi            Trust the project (/trust), because Pi loads project
-                skills only after that. If /skill:prep is not suggested,
-                type it anyway; to have it suggested, turn on
-                enableSkillCommands in /settings.
+                skills only after that.
+PI_TRUST
+fi
+if has pi; then cat <<'PI_USE'
+  Pi            If /skill:prep is not suggested, type it anyway; to have
+                it suggested, turn on enableSkillCommands in /settings.
 PI_USE
 fi
-if has kiro; then cat <<'KIRO_USE'
+if has kiro; then
+  if [ "$scope" = repo ]; then kiro_skills='skill://.kiro/skills/**/SKILL.md'
+  else kiro_skills='skill://~/.kiro/skills/*/SKILL.md'; fi
+  cat <<KIRO_USE
   Kiro CLI      A custom agent needs this line in its "resources":
-                "skill://.kiro/skills/**/SKILL.md"
+                "$kiro_skills"
 KIRO_USE
 fi
 cat <<'GUARD'
@@ -332,9 +550,10 @@ if has claude; then cat <<'CLAUDE_GUARD'
                 command (cp and printf); approve it or answer A. To stop
                 the prompts for the briefs folders, add to
                 permissions.allow:
-                  in .claude/settings.json     "Edit(/.briefs/**)"
-                  in ~/.claude/settings.json   "Read(~/.briefs/**)",
-                                               "Edit(~/.briefs/**)"
+                  in the project's .claude/settings.json
+                    "Edit(/.briefs/**)"
+                  in ~/.claude/settings.json
+                    "Read(~/.briefs/**)", "Edit(~/.briefs/**)"
                 "/.briefs/**" means .briefs in the folder the session
                 starts in, so it works only from the repository root.
                 For a stronger guard, use --permission-mode dontAsk: it
@@ -365,16 +584,26 @@ if has pi; then cat <<'PI_GUARD'
                 /prep. Only .briefs/ should have changed.
 PI_GUARD
 fi
-folders=".agents/"
-if has claude; then folders="$folders, .claude/skills"; fi
-if has kiro; then folders="$folders, .kiro/skills"; fi
-case "$folders" in *", "*) folders="${folders%, *} and ${folders##*, }" ;; esac
-cat <<COMMIT
+if [ "$scope" = repo ]; then
+  folders=".agents/"
+  if has claude; then folders="$folders, .claude/skills"; fi
+  if has kiro; then folders="$folders, .kiro/skills"; fi
+  case "$folders" in *", "*) folders="${folders%, *} and ${folders##*, }" ;; esac
+  cat <<COMMIT
 
 Commit $folders so the team gets the
 skills, and the briefs in .briefs/ if the team should see them (git shows
 .briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
 COMMIT
+fi
+}
+
+if [ "$action" = install ]; then
+  notes
+else
+  echo
+  echo "That is the version inside this file. For a newer one, download the file again."
+fi
 
 if [ -n "$textlinks" ]; then
   cat <<TEXTLINKS
@@ -392,7 +621,7 @@ Pi is not affected: it reads .agents/skills directly. Choose one:
      and run this installer again.
 
   2. Use local copies instead:
-       bash install-prep.sh$named --copies
+       bash install-prep.sh install$named --copies
      Git then refuses to switch to a branch that does not have these links,
      and to pull a change to them, until you run:
        bash install-prep.sh$named --undo-copies
