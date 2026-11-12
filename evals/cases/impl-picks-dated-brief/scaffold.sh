@@ -27,10 +27,13 @@ git -c user.name=t -c user.email=t@example.invalid commit -q -m "Calc"
 commit="$(git rev-parse --short HEAD)"
 
 # The brief impl should pick: the only file in .briefs/ named like a brief.
-cat > .briefs/2026-11-10-090000-add-double.md <<EOF
+# It is stamped now, because impl asks before it starts on a brief that is
+# more than a day old.
+stamp="$(date +%Y-%m-%d-%H%M%S)"
+cat > ".briefs/$stamp-add-double.md" <<EOF
 # Add double() to calc
 
-Type: feature | Date: 2026-11-10-090000 | Commit: $commit | Status: ready
+Type: feature | Date: $stamp | Commit: $commit | Status: ready
 
 ## Goal
 calc.py gains double(x), which returns x times two, for the pricing page.

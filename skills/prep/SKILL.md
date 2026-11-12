@@ -1,6 +1,6 @@
 ---
 name: prep
-description: Turns a rough request into a precise, checkable task brief before any code is written, or into a checked review when nothing should change yet. Surveys the code read-only, reproduces every problem it reports, checks official docs, asks only what it cannot find out, and warns about risky requests. Use when the user types /prep, or asks to prepare, scope or plan a non-trivial change before it is made. Not for quick questions or small, clear edits.
+description: Turns a rough request into a precise, checkable task brief before any code is written, or into a checked review when nothing should change yet. Surveys the code read-only, reproduces every problem it reports, checks official docs, asks only what it cannot find out, and warns about risky requests. Use only when the user types /prep or asks for the prep skill by name.
 ---
 
 # Prep
@@ -14,7 +14,7 @@ person second.
 
 - Prepare, do not implement. Leave project files untouched. Write only to
   `.briefs/` in the project, to `~/.briefs/` once the person agrees to keep
-  a record, and to a throwaway copy outside the project when you try a fix
+  a record, and to a throwaway copy outside the project
   (step 4). Implementation starts only after the brief is saved in step 10,
   when the person runs `/impl` or asks for it.
 - Say only what you have checked: every statement about the current state
@@ -38,25 +38,26 @@ person second.
   recommend. The person decides; if they keep their choice, record it and the
   risk in the brief. If the request is clearly dangerous, do not brief it as
   asked: brief the safe way, or say what would make it safe.
-- Read live systems (cloud, cluster, database, Terraform state) only with
-  read-only commands, and only when the person allowed it, here or in the
-  project's agent instructions. Record what they allowed under Decisions.
+- Read live systems (cloud, cluster, database, infrastructure state) only
+  with read-only commands, and only when the person allowed it, here or in
+  the project's agent instructions. Record what they allowed under Decisions.
 - Keep secrets out: check a secret by its name, never its value. When a file
-  or command can show one, use a form that shows names only: `.env.example`,
-  not `.env`; for an environment variable, `echo "${NAME:+set}"`, not `env`
-  or `printenv`; in `*.tfvars` or Helm values, `grep` only the key you need;
-  `kubectl get secret <name>` without `-o`; `describe-secret`, not
-  `get-secret-value` or `--with-decryption`; `terraform output` without
-  `-json` or `-raw`; `terraform state list`, not `state pull`, `show -json`
-  or a `.tfstate` file; `git grep -l` for a secret's name. A brief or a
-  record names where a secret is stored, never its value.
+  or command can show one, use a form that shows only names, or only whether
+  a value is set: `.env.example`, not `.env`; for an environment variable,
+  `echo "${NAME:+set}"`, not `env` or `printenv`; in a settings file that may
+  hold secrets, `grep` only the key you need, and for a secret's key only
+  `grep -c <key> <file>`; in a secret store, a cluster or infrastructure
+  state, a command that lists names or describes, never one that gets,
+  decrypts or dumps a value, and no state file. A tool that hides values in
+  a list may still print the one you ask for by name. A brief or a record
+  names where a secret is stored, never its value.
 - Spend effort where it changes the brief. Search before you read, with
-  `git grep -n --untracked <word>` rather than `grep -r`: it skips files git
-  ignores, such as build output, and `.env` if git ignores it. Read only
-  what the task touches, and stop when more reading would not change what
-  you write. Keep command output short, because it is re-sent on every later
-  step: `git log -n 20`, `git show --stat`, `| tail -n 40`, a scanner's
-  `--severity HIGH,CRITICAL`.
+  `git grep -n --untracked <word>` (`-l`, not `-n`, for a secret's name)
+  rather than `grep -r`: it skips files git ignores, such as build output,
+  and `.env` if git ignores it. Read only what the task touches, and stop
+  when more reading would not change what you write. Keep command output
+  short, because it is re-sent on every later step: `git log -n 20`,
+  `git show --stat`, `| tail -n 40`, a scanner's severity filter.
 - Make answering easy: plain words, short messages, statements and questions
   numbered in one list, each question's options lettered, and your tool's
   multiple-choice questions if it has them (if they are refused, as in
@@ -64,8 +65,7 @@ person second.
   make sense alone: the person may not see your message. Write in English
   unless asked.
 - Scale to the task. A small task changes one or two files, has one obvious
-  approach and touches nothing live; keep every step short for it. Offer to
-  skip the prep only if the person did not ask for one by name.
+  approach and touches nothing live; keep every step short for it.
 
 ## Where things live
 
@@ -99,13 +99,13 @@ this once. It prints the date and time (also to judge how current versions
 and docs are), the full home path, the commit and the dedicated skills:
 
 ```
-date +%Y-%m-%d-%H%M%S; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
+date +%Y-%m-%d-%H%M%S; echo "$HOME"; echo "commit: $(git rev-parse --short HEAD 2>/dev/null)"; ls "$HOME/.briefs/skills" 2>/dev/null || true
 ```
 
 If the folder is not a git repository (for example an uploaded file in a
 chat), the git commands in this skill fail there: search with `grep -rn`,
-try a fix on a `cp -R` copy in a folder from `mktemp -d`, and find the files
-a command changed with `find . -newer <a file you made just before it>`.
+try a fix on a `cp -R` copy in a folder from step 4's `mktemp`, and find the
+files a command changed with `find . -newer <a file you made just before it>`.
 
 Give the request a type name of two or three words, lowercase with hyphens,
 such as `fix-cves` or `add-load-balancer`. Then check whether a dedicated
@@ -151,9 +151,8 @@ commit that introduced it (`git show --stat <commit>`).
 Look for earlier work on the same problem, for example with
 `git log --oneline -n 20 -i --grep=<word>`,
 `git log --oneline -n 20 -S <name>` and, if your tool can see pull requests,
-`gh pr list --state all --search <word>` (GitHub) or
-`az repos pr list --status all --top 50 --output table | grep -i <word>`
-(Azure DevOps). A reverted or half-done attempt tells you what to avoid.
+a search of them that includes closed ones. A reverted or half-done attempt
+tells you what to avoid.
 When something surprises you, such as a disabled test, a TODO, a workaround
 or a recent revert, find out why before you plan around it.
 
@@ -163,21 +162,26 @@ Also find:
   where the change lands,
 - how the project is built, tested and run (README, agent instruction files,
   Makefile, package scripts, CI config), for exact commands,
+- for a failure in CI, the log of the failed step; never rerun the job,
 - the versions that matter (language, framework, provider, base image), so
   that the docs in step 4 match them,
 - what depends on the thing that will change: callers, consumers, other
   repos, pipelines.
 
 Reproduce every problem you will report with a safe command from step 6,
-such as a failing test, a local run or a run in a throwaway copy (step 4).
+checked before and after as that step says, such as a failing test, a local
+run or a run in a throwaway copy (step 4).
 In a review, also walk the edge cases (a second run, missing input, no git,
 no permission, another OS), and read the parts meant to be read, such as
 docs, prompts and config comments: look for mistakes, for contradictions
 with themselves or the code, and for needless length. Where one part's
 output feeds another (a file name, a format, an order), check with a quick
 test that they fit. For a bug, find the root cause: trace the bad value
-backward to where it starts, compare with similar code that works and list
-every difference, and test one guess at a time with the smallest safe check.
+backward to where it starts, compare with what works (similar code, the last
+good commit, a run elsewhere such as CI) and list every difference, down to
+lockfiles, tool versions and settings. Test one guess at a time with the
+smallest safe check; run `git bisect` only in a throwaway copy, after
+committing its changes there.
 Keep going until one cause explains every symptom. If you cannot confirm the
 cause, say so, and brief the next investigation step instead of a fix.
 
@@ -194,14 +198,12 @@ enough; go deeper when the change is risky or you are unsure. For
 security-sensitive work (login, passwords, sessions, tokens, admin access,
 payments, file uploads), also read the framework's security guide and the
 matching OWASP Cheat Sheet, and prefer the framework's built-in feature or a
-well-known library to writing your own. If a docs page is empty because it
-needs JavaScript, as Terraform Registry pages are, read the same docs in the
-source repository at your version's tag (a provider's docs folder on GitHub).
+well-known library to writing your own.
 
-Without a web tool, use the shell for small official answers, such as
-`npm view <pkg> version`, `pip index versions <pkg> | head -2` or
-`go list -m -versions <module>`, filtering pages or JSON with `grep` or `jq`.
-Without any web access, say so and mark what you could not check UNVERIFIED.
+Without a web tool, use the shell for small official answers: the package
+manager can list a package's versions, and `grep` or `jq` can filter a page
+or JSON. Without any web access, say so and mark what you could not check
+UNVERIFIED.
 
 Turn vague words in the request, such as "fast", "secure" or "simple", into
 a number or a check, or ask about them in step 5.
@@ -227,22 +229,23 @@ Then choose the approach:
 Then imagine the chosen change is live and has failed. Name the two or three
 most likely reasons, and plan how the brief prevents or detects each one.
 
-When you are not sure a fix works, try it in a throwaway copy, never in the
+To add logging or try a fix you are not sure of, use a throwaway copy, never the
 project. This copies the committed files and their uncommitted changes, but
 no submodules and no untracked or ignored files such as `.env`, cuts the
 copy's link to the project so nothing can be pushed back, and prints where
 the copy is:
 
 ```
-r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && {
-  git clone -q "$r" "$d/try" && git -C "$d/try" remote remove origin &&
+r=$(git rev-parse --show-toplevel) && d=$(mktemp -d "${TMPDIR:-/tmp}/prep.XXXXXX") && {
+  git clone -q -o origin "$r" "$d/try" && git -C "$d/try" remote remove origin &&
   { git -C "$r" diff --quiet HEAD ||
     git -C "$r" -c diff.noprefix=false diff HEAD --binary --no-ext-diff --no-textconv --no-color |
     git -C "$d/try" apply; } &&
   echo "$d/try" || { rm -rf "$d"; false; }; }
 ```
 
-Copy in any untracked file the trial needs. Make the change and run the
+Copy in any untracked file the trial needs, and dependency folders such as
+`node_modules`, but no file that may hold a secret. Make the change and run the
 proof there, record what it printed, then delete the folder `mktemp` made.
 If the command fails, for example because the project has no commits yet,
 it removes its own folder: say that the trial could not run, and do not try
@@ -268,7 +271,8 @@ For a change, send one message with these parts, in this order:
 - a warning, if the request is risky or a better way exists, or if the code
   already does this, a smaller change would do, the request conflicts with
   how the project works, or the task is too big to verify in one go (then
-  propose a split into ordered briefs and prepare only the first),
+  propose a split into ordered briefs, prepare only the first and list the
+  others under Out of scope),
 - the request as you understand it, and its type,
 - what you found, as numbered statements, each with its evidence (a path, a
   command or a link), including your assumptions; mark defaults from a
@@ -283,9 +287,10 @@ ranked by impact times uncertainty: the one that would change the work most
 and is least clear comes first. Give each lettered options, with your
 recommendation first and what each option leads to; make the recommendation
 complete, with any number it needs, so that "ok" is a full answer. If a
-read-only look at a live system, or a proof command that takes long, would
-change the brief, ask for it here and name the commands. If the person says
-"you decide", decide and record it as an assumption.
+read-only look at a live system, an install in the throwaway copy, or a proof
+command that takes long, would change the brief, ask for it here and name
+the commands. If the person says "you decide", decide and record it as an
+assumption.
 
 Ask the person to reply like "2 is wrong, 5B", or "ok" to accept every
 recommendation. One round is the goal: ask again only when an answer opens a
@@ -297,35 +302,35 @@ and show the report above the brief in step 9.
 
 Check that the commands the work needs exist here (build, test, scanner,
 plan), that the access it needs exists or is listed as a blocker (check it by
-name, such as the current kube context; never print a credential), and that
-the proof runs. Run the proof commands now when they are safe, and record a
-one-line summary of what each prints as the baseline.
+name, such as which account or cluster is selected; never print a
+credential), and that the proof runs. Run the proof commands now when they
+are safe, and record a one-line summary of what each prints as the baseline.
 
 Safe means it changes no project file and reaches no live system or shared
 database, directly or through settings such as `.env` (if you cannot tell, it
-is not safe): unit tests, scanners, and linters or formatters in check mode
-(`terraform fmt -check`, `black --check`; never `--fix`, `--write` or
-`pre-commit run`, whose hooks rewrite files). A plan
-(`terraform plan -lock=false`, `kubectl diff`), `kubectl logs` and cloud CLIs
-read a live system, so they follow the live-system rule. Filter a plan's
-output, for example:
-`terraform plan -lock=false -input=false -no-color | grep -E '# .* (will|must) be|Plan:|No changes'`.
+is not safe): unit tests, builds and local end-to-end tests whose output git
+ignores, scanners, and linters or formatters in check mode
+(never `--fix`, `--write` or a hook runner, which rewrite files). A plan or
+diff against real infrastructure, logs from a running system and cloud
+command-line tools read a live system, so they follow the live-system rule,
+and a plan must not take a lock.
 Never apply, deploy, push, migrate, pull, checkout or stash. Prefer the
 narrowest command that covers the change. A check must end by itself: no
-watch mode, no app or server left running.
+watch mode, and the same command stops any app or server it starts, for
+example `(<start> & p=$!; trap "kill $p" EXIT; <check>)`.
 
 Run this before and after; it sees changed, new and untracked files, but not
-ignored ones such as caches a test writes:
-`git status --short; { git diff --no-ext-diff --no-textconv; git ls-files -o --exclude-standard -z :/ | xargs -0 cksum; } | cksum`
+ignored ones such as caches a test writes, or files in a nested repository:
+`git status --short; { git diff HEAD --no-ext-diff --no-textconv; git ls-files -o --exclude-standard -z :/ | xargs -0 cksum; } | cksum`
 If a command changed a file, tell the person and leave the file as it is (no
 `git restore` or `git reset`: it may hold their own uncommitted work), and
-do not run that command again.
+run that command again only in a throwaway copy.
 
-Do not install or change anything to make a command run (no `npm install`,
-`pip install` or `terraform init`). A proof that fails to run today will fail
-for the implementer too: record that, and make fixing it the first step of
-the task or a blocker. A proof this session may not run can still work in the
-implementing session: mark it UNTESTED, with the reason.
+Do not install, set up or change anything in the project to make a command
+run. A proof that fails to run today will fail for the implementer too:
+record that, and make fixing it the first step of the task or a blocker. A
+proof this session may not run can still work in the implementing session:
+mark it UNTESTED, with the reason.
 
 ### 7. Draft the brief
 
@@ -346,6 +351,7 @@ the smallest useful check part of the task. Typical proof:
 | New feature | its tests pass, and a run of the app shows it working |
 | Behaviour change | updated tests pass, and the old behaviour is gone where intended |
 | Bug fix | a test or command that fails before the fix and passes after |
+| Flaky failure | with retries off, it fails k of n runs before the fix and none of 3n/k runs after |
 | Dependency or security update | the scanner no longer reports the targeted CVEs and shows no new HIGH or CRITICAL ones, tests pass, the app starts |
 | Infrastructure change | the plan shows only the intended changes; after deploy, the health check passes |
 
@@ -380,36 +386,39 @@ nothing under Open questions would change the work. Otherwise set Status to
 
 ### 9. Show the brief and ask about a record
 
-Show the full brief, after the step 5 report if you did not stop there, and
-ask for corrections. In the same message, ask in plain text:
+Show the full brief and ask for corrections. In the same message, ask in
+plain text:
 
-> Keep a record of this task on this computer?
+> Keep a record of this task on this computer? Later preps in any project
+> may read it.
 > - A. No.
 > - B. Yes. Add one line to the log and keep a copy of the brief.
-> - C. Yes, and also check whether I asked for something like this before.
+> - C. Yes, and also check whether I asked for something like this before,
+>   so that a repeat can get a dedicated skill.
 
-Say in one line that C finds repeats, so that a dedicated skill can make the
-next one shorter. Recommend C when this kind of task looks like it comes back
-or you used a dedicated skill, and B otherwise. "ok" accepts the brief and
-your recommendation; a reply that does not choose means A. Then end your
-message: save and record nothing before the reply.
+Recommend C when this kind of task looks like it comes back or you used a
+dedicated skill, and B otherwise. "ok" accepts the brief and your
+recommendation; a reply that does not choose means A. Then end your message:
+save and record nothing before the reply.
 
 ### 10. Finish
 
-After the reply, do these in order:
+After a reply that accepts or corrects the brief (answer anything else,
+then ask again), do these in order:
 
 1. Apply the person's corrections to the brief.
 2. For C only, look back as described below.
-3. If items 1 or 2 changed Approach, Changes, Proof or Decisions, show the
-   changed lines and end your message; go on after the person's ok.
+3. If items 1 or 2, or any later edit, changed Approach, Changes, Proof or
+   Decisions, show the changed lines and end your message; go on after the
+   person's ok.
 4. For B and C, add the record note below to the end of the brief, with the
    project and the type filled in.
-5. Save the brief as `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md`, with the date
-   and time from step 1. If that name is taken, use the current time instead,
-   so that the newest brief always sorts last.
+5. Save the brief as `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md`, with the time
+   of saving (run step 1's `date` again), so that the newest brief always
+   sorts last.
 6. For B and C, in one shell command: create `~/.briefs/tasks/` if it is
    missing, `cp` the saved brief there as
-   `<YYYY-MM-DD-HHMMSS>-<project>-<type>.md`, and append the `briefed` line
+   `<YYYY-MM-DD-HHMMSS>-<project>--<type>.md`, and append the `briefed` line
    with `printf '%s\n' '<line>' >> <log>` (no quotes or backticks in it).
    Check it with `tail -n 1 <log>`; for B, read nothing else in the log.
 7. For C, when this kind of task came up before, offer a dedicated skill as
@@ -460,9 +469,7 @@ say how many times it came up and offer to build one from the recorded
 briefs. If one exists and the recorded tasks or this run show something new
 or wrong in it, say so and offer to update it; replace lines, do not add.
 
-Write it to `~/.briefs/skills/<type>/SKILL.md` in the usual skill format:
-frontmatter with `name: <type>` (it must equal the folder name) and a
-`description` of the kind of task it covers, then four short parts:
+Write it to `~/.briefs/skills/<type>/SKILL.md`, in four short parts:
 
 - Same every time: the answers and decisions that did not change.
 - Steps and commands: how the work goes, and how to find the build, test and
@@ -478,7 +485,7 @@ next to anything that holds in only one, and add a script for mechanical parts.
 ```markdown
 # <Short task title>
 
-Type: <type> | Date: <date> | Commit: <short hash> | Status: ready / has open questions
+Type: <type> | Date: <YYYY-MM-DD-HHMMSS> | Commit: <short hash>[ plus uncommitted changes] | Status: ready / has open questions
 
 ## Goal
 What should be true when this is done, and why it matters.
@@ -496,7 +503,7 @@ The closest existing implementation, where it lives, what to copy and what must 
 The chosen option and why (places, order, official guidance), and why the others lost.
 
 ## Changes
-One line per place: where, and what should be different there.
+One line per place: where, what should differ there, and the check that catches it.
 
 ## Decisions
 - <decision> (by: person, if they chose or accepted it / assumed, with the reason)
@@ -527,7 +534,7 @@ say so instead of improvising. Check secrets by name only; never print a
 value. Read a live system only where Decisions say the person allowed it.
 Never run `git stash`, `checkout`, `restore`, `reset` or `clean`. Do not
 commit, push, deploy, apply or migrate, or change a live system or
-Terraform state in any other way, unless the person asks for it in this
+infrastructure state in any other way, unless the person asks for it in this
 conversation after seeing what will change. When finished, tell the person
 in one line what this brief got wrong or left out.
 ```
