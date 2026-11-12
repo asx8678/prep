@@ -237,16 +237,16 @@ the copy is:
 
 ```
 r=$(git rev-parse --show-toplevel) && d=$(mktemp -d "${TMPDIR:-/tmp}/prep.XXXXXX") && {
-  git clone -q -o origin "$r" "$d/try" && git -C "$d/try" remote remove origin &&
+  git clone -q -o origin "$r" "$d" && git -C "$d" remote remove origin &&
   { git -C "$r" diff --quiet HEAD ||
     git -C "$r" -c diff.noprefix=false diff HEAD --binary --no-ext-diff --no-textconv --no-color |
-    git -C "$d/try" apply; } &&
-  echo "$d/try" || { rm -rf "$d"; false; }; }
+    git -C "$d" apply; } &&
+  echo "$d" || { rm -rf "$d"; false; }; }
 ```
 
 Copy in any untracked file the trial needs, and dependency folders such as
 `node_modules`, but no file that may hold a secret. Make the change and run the
-proof there, record what it printed, then delete the folder `mktemp` made.
+proof there, record what it printed, then delete the folder it printed.
 If the command fails, for example because the project has no commits yet,
 it removes its own folder: say that the trial could not run, and do not try
 it in the project instead.
@@ -316,8 +316,9 @@ command-line tools read a live system, so they follow the live-system rule,
 and a plan must not take a lock.
 Never apply, deploy, push, migrate, pull, checkout or stash. Prefer the
 narrowest command that covers the change. A check must end by itself: no
-watch mode, and the same command stops any app or server it starts, for
-example `(<start> & p=$!; trap "kill $p" EXIT; <check>)`.
+watch mode, and the same command starts any app or server it needs, waits
+until it answers and stops it, for example
+`(<start> & p=$!; trap "kill $p" EXIT; curl -sf --retry 5 --retry-connrefused <url>)`.
 
 Run this before and after; it sees changed, new and untracked files, but not
 ignored ones such as caches a test writes, or files in a nested repository:
@@ -424,7 +425,7 @@ then ask again), do these in order:
 7. For C, when this kind of task came up before, offer a dedicated skill as
    described in the next section.
 8. End your message with how to start the implementation, as its last
-   sentence. Every step of the work re-sends the whole conversation, so:
+   sentence:
    - If this conversation is still short (a handful of files read and no long
      output such as logs, a big plan or a scanner table; or under a fifth of
      the context, if your tool shows it), there is no need to start over:

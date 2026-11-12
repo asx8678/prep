@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Checks the installer and the commands inside the skills.
+# Checks the installer, the commands inside the skills, and the eval cases
+# and evals/compare.sh, without a model call.
 #
 #   bash tests/run.sh
 #
@@ -364,6 +365,7 @@ same "15 exit 0" "$rc" 0
 expect "15 it prints the folder of the copy" test -d "$copy/.git"
 # Plain `mktemp -d` ignores TMPDIR on macOS; a sandbox may allow only TMPDIR.
 expect "15 the copy is made in TMPDIR" is_under "$copy" "$work/mk"
+same "15 the folder it prints is the one to delete" "$(dirname "$copy")" "$work/mk"
 same "15 the copy holds an uncommitted change" "$(cat "$copy/a.txt" 2>/dev/null)" two
 expect "15 the copy holds an uncommitted change to a binary file" cmp -s "$copy/bin.dat" "$pr/bin.dat"
 refuse "15 the copy has no untracked file" test -e "$copy/untracked.txt"
@@ -658,6 +660,179 @@ answers='1\n1\n' run "$m" claude
 same "26 a tool named on the command line is not asked for: exit 0" "$rc" 0
 expect "26 a tool named on the command line: ~/.claude/skills/prep is linked" is_link_to "$HOME/.claude/skills/prep" "$links_to/prep"
 refuse "26 a tool named on the command line: no ~/.kiro folder" test -e "$HOME/.kiro"
+
+echo "== 27. prep's example of a check that starts a server (in the skill text)"
+example="$(grep -o '`(<start> & [^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+expect "27 the example is in prep's text" test -n "$example"
+mkdir "$work/site" && printf 'ok\n' > "$work/site/ok.txt"
+port=$((10000 + $$ % 20000))
+server="http.server --bind 127.0.0.1 $port"
+# check_url FILE: runs the example for FILE on a local server; sets $rc. The
+# output goes to a file: a server left running would keep a pipe open, and
+# the test would wait for it instead of failing.
+check_url() {
+  ( cd "$work/site" && "$shell" -c "$(printf '%s' "$example" |
+    sed "s|<start>|python3 -m $server|; s|<url>|http://127.0.0.1:$port/$1|")" ) > "$work/out" 2>&1
+  rc=$?
+}
+# no_server: waits until the server is gone, because kill does not wait for
+# it; fails when it still runs after 5 seconds. pgrep exits 1 when nothing
+# matches: any other failure, such as no pgrep at all, must not count as gone.
+no_server() {
+  local tries=0
+  until pgrep -f "$server" > /dev/null 2>&1; [ $? -eq 1 ]; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 50 ] || return 1
+    sleep 0.1
+  done
+}
+check_url ok.txt
+same "27 the check passes although the server needs time to start" "$rc" 0
+# The second server needs the port that the first one held.
+no_server
+check_url missing.txt
+refuse "27 with a URL that does not exist the check fails" test "$rc" -eq 0
+expect "27 no server is left running" no_server
+# A failed check must not leave a server behind either.
+pkill -f "$server"
+
+echo "== 28. The end-to-end cases tell a right fix from a wrong one"
+# A state copies files over the scaffolded project, so Python must not keep
+# a compiled copy of the file that was there before.
+export PYTHONDONTWRITEBYTECODE=1
+cat > "$work/judge.py" <<'PY'
+"""What a case's acceptance test or its file graders say about a project.
+
+Run it in the project's folder:
+  judge.py test <acceptance test>   prints pass or fail, or error when the test itself broke
+  judge.py graders <case folder>    prints pass when every file grader passes, else fail
+A crash prints nothing, so a check never takes it for a verdict.
+"""
+import os
+import re
+import sys
+import unittest
+from pathlib import Path
+
+kind, where = sys.argv[1], Path(sys.argv[2])
+if kind == "test":
+    sys.path.insert(0, os.getcwd())
+    suite = unittest.defaultTestLoader.discover(str(where.parent), pattern=where.name)
+    result = unittest.TextTestRunner(stream=sys.stderr).run(suite)
+    print("error" if result.errors or not result.testsRun else "fail" if result.failures else "pass")
+else:
+    # A file grader is a regex grader whose target is a file. The eval tool
+    # reads the pattern as JavaScript; these use only what Python shares.
+    verdicts = []
+    for grader in sorted(where.glob("graders/*.md")):
+        fields = dict(line.split(": ", 1) for line in grader.read_text().split("---\n")[1].splitlines())
+        target = re.fullmatch(r"\{\s*source:\s*file,\s*path:\s*(\S+)\s*\}", fields.get("target", ""))
+        if fields["type"] == "regex" and target:
+            pattern = re.fullmatch("'(.*)'", fields["pattern"]).group(1).replace("''", "'")
+            found = re.search(pattern, Path(target.group(1)).read_text()) is not None
+            verdicts.append(found == {None: True, "not_contains": False}[fields.get("match")])
+    if not verdicts:
+        sys.exit(f"no file grader in {where}")
+    print("pass" if all(verdicts) else "fail")
+PY
+# says KIND DIR: what the acceptance test (KIND test) or the file graders
+# (KIND graders) of the case say about the project in DIR
+says() {
+  local about="$self/acceptance_test.py"
+  [ "$1" = test ] || about="$e2e"
+  ( cd "$2" && python3 "$work/judge.py" "$1" "$about" ) 2> "$work/out"
+}
+# judge STATE DIR VERDICT: both must say VERDICT (pass or fail) about DIR
+judge() {
+  local tested="the acceptance test passes" graded="every file grader passes"
+  [ "$3" = pass ] || { tested="the acceptance test fails"; graded="a file grader fails"; }
+  same "28 $name, $1: $tested" "$(says test "$2")" "$3"
+  same "28 $name, $1: $graded" "$(says graders "$2")" "$3"
+}
+for e2e in "$repo"/evals/cases/e2e-*; do
+  name="$(basename "$e2e")"
+  self="$repo/evals/selftest/$name"
+  base="$work/e2e/$name/scaffolded"
+  mkdir -p "$base"
+  ( cd "$base" && "$shell" "$e2e/scaffold.sh" ) > "$work/out" 2>&1
+  same "28 $name: the scaffold runs" "$?" 0
+  ( cd "$base" && python3 -m unittest ) > "$work/out" 2>&1
+  same "28 $name: the project's own tests pass as scaffolded" "$?" 0
+  judge "as scaffolded" "$base" fail
+  for state in "$self"/wrong* "$self"/fixed*; do
+    dir="$work/e2e/$name/$(basename "$state")"
+    { cp -R "$base" "$dir" && cp -R "$state/." "$dir/"; } 2> "$work/out"
+    case "$(basename "$state")" in wrong*) want=fail ;; *) want=pass ;; esac
+    judge "$(basename "$state")" "$dir" "$want"
+  done
+done
+
+echo "== 29. evals/compare.sh, with a fake claude"
+mkdir "$work/fake-claude"
+cat > "$work/fake-claude/claude" <<'FAKE'
+#!/bin/sh
+# Stands in for `claude plugin eval <plugin folder> ...`: records the call,
+# writes an empty result where --output-dir says, and exits with $FAKE_EXIT.
+call="$FAKE_CALLS/$$"
+mkdir -p "$call"
+printf '%s ' "$@" > "$call/args"
+cp "$3/skills/prep/SKILL.md" "$call/prep.md"
+git="$(command -v git)"
+printf '%s\n' "$git" > "$call/git"
+head -c 1000 "$git" > "$call/git-start"
+echo "summary from the eval tool"
+while [ $# -gt 0 ]; do
+  [ "$1" = --output-dir ] && out="$2"
+  shift
+done
+mkdir -p "$out"
+printf '%s\n' '{"cases": [], "costUsd": 0, "durationSeconds": 0, "partial": false}' > "$out/aggregate-result.json"
+exit "$FAKE_EXIT"
+FAKE
+chmod +x "$work/fake-claude/claude"
+# The clone holds what is committed; the script and the cases are the
+# working tree's. table.py comes later: with OLD=none the script must not
+# need it, and running it there would also exit 1.
+c="$work/evalrepo"
+git clone -q "$repo" "$c" > "$work/out" 2>&1
+rm -rf "$c/evals" && mkdir "$c/evals" && cp -R "$repo/evals/cases" "$repo/evals/compare.sh" "$c/evals/"
+calls="$work/claude-calls"
+# compare EXIT [OPTIONS...]: runs the script with a fake claude that exits
+# with EXIT; sets $rc and keeps the output in $work/out
+compare() {
+  local code="$1"; shift
+  rm -rf "$calls"
+  ( cd "$work/nogit" && FAKE_CALLS="$calls" FAKE_EXIT="$code" PATH="$work/fake-claude:$real_path" \
+    "$shell" "$c/evals/compare.sh" "$@" ) > "$work/out" 2>&1
+  rc=$?
+}
+unset OLD NEW MODEL
+results_before="$(ls -A "$repo/evals/results" 2>/dev/null)"
+OLD=none compare 1 --case 'e2e-*' --runs 1
+same "29 OLD=none: the exit code is the eval tool's" "$rc" 1
+same "29 OLD=none: claude plugin eval is called once" "$(($(ls "$calls" 2>/dev/null | wc -l)))" 1
+call="$calls/$(ls "$calls" 2>/dev/null | head -n 1)"
+args="$(cat "$call/args" 2>/dev/null)"
+expect "29 OLD=none: it asks for runs with the skills and without" contains "$args" "--ablation with-without "
+expect "29 OLD=none: the options it was given are passed on" contains "$args" "--case e2e-* --runs 1 "
+git -C "$c" show HEAD:skills/prep/SKILL.md > "$work/prep-at-head.md"
+expect "29 OLD=none: the plugin folder holds prep's text at NEW" cmp -s "$call/prep.md" "$work/prep-at-head.md"
+expect "29 OLD=none: the eval tool's output is shown" grep -q "summary from the eval tool" "$work/out"
+named="$(grep -o "$c/evals/results/[^ ]*" "$work/out" | tail -n 1)"
+expect "29 OLD=none: the output names the results folder" test -f "$named/aggregate-result.json"
+if xcode_git="$(xcrun -f git 2>/dev/null)"; then
+  same "29 git for the runs is a wrapper around the git that xcrun names" \
+    "$(cat "$call/git-start" 2>/dev/null)" "$(printf '#!/bin/sh\nexec "%s" "$@"' "$xcode_git")"
+else
+  same "29 git for the runs is the usual git" "$(cat "$call/git" 2>/dev/null)" "$(command -v git)"
+fi
+cp "$repo/evals/table.py" "$c/evals/"
+compare 0 --case 'e2e-*' --runs 1
+same "29 old against new: exit 0" "$rc" 0
+same "29 old against new: claude plugin eval is called twice" "$(($(ls "$calls" 2>/dev/null | wc -l)))" 2
+same "29 old against new: neither call asks for runs without the skills" \
+  "$(($(cat "$calls"/*/args 2>/dev/null | grep -o -e '--ablation none ' | wc -l)))" 2
+same "29 nothing is written to this repository's evals/results/" "$(ls -A "$repo/evals/results" 2>/dev/null)" "$results_before"
 
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]
