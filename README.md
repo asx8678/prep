@@ -19,7 +19,7 @@ you:   /prep fix the CVEs in the api service
 prep:  reads the code, the scanner output and the advisories
        → one message: what it found, the options, up to 3 questions
 you:   ok
-prep:  checks its own plan, shows the brief, saves .briefs/2026-11-11-1709-fix-cves.md
+prep:  checks its own plan, shows the brief, saves .briefs/2026-11-11-170900-fix-cves.md
 you:   /impl
 impl:  writes failing tests → makes the change → runs the proof → reports
 ```
@@ -239,7 +239,7 @@ A shortened example from a test run on a Terraform repository:
 ```markdown
 # Add versioning to the logs bucket
 
-Type: add-bucket-versioning | Date: 2026-11-11-1738 | Commit: f94cde6 | Status: ready
+Type: add-bucket-versioning | Date: 2026-11-11-173800 | Commit: f94cde6 | Status: ready
 
 ## Goal
 The logs bucket keeps every overwritten or deleted object version for 90 days, then deletes it.
@@ -471,7 +471,7 @@ behind when it failed, that the installer wrote to `~/.briefs/` although it
 said it did not, and that a link inside a linked skills folder did not open.
 All are fixed.
 
-The installer and the commands in the skills pass the 135 checks in
+The installer and the commands in the skills pass the 138 checks in
 [`tests/run.sh`](tests/run.sh): no git, a subfolder, a second run, upgrades,
 your edits, copy mode, edited copies, copies from older installers, your own
 links and folders, a linked skills folder, a worktree, Windows line endings,

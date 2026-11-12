@@ -12,10 +12,10 @@ their corrections.
 ## Steps
 
 1. Find the brief. Use the file the person named after the command.
-   Otherwise use the newest brief that is not done: the `.md` file in
-   `.briefs/` whose name sorts last (names start with the date and time)
-   and whose Status is not "done". Say in one line which file you use. If
-   there is none, say so and stop.
+   Otherwise use the newest brief that is not done: of the files in
+   `.briefs/` whose names start with a date and time and whose Status is
+   not "done", the one that sorts last. Say in one line which file you use.
+   If there is none, say so and stop.
 2. Read the whole brief before you change anything. If its Status is "has
    open questions", show those questions and wait for the answers. Run
    `git status --short`. If there are uncommitted changes outside

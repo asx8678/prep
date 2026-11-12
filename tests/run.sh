@@ -410,5 +410,19 @@ else
   bad "18 prep's text has a command that checks an environment variable by name"
 fi
 
+echo "== 19. prep's command that counts earlier tasks (in the skill text)"
+look="$(grep -o '`grep [^`]*uniq -c`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+expect "19 the command is in prep's text" test -n "$look"
+log="$work/log.md"
+printf '%s\n' \
+  '2026-11-11 | payments-api | fix-cves | briefed | Update vulnerable packages' \
+  '2026-11-12 | payments-api | fix-cves | done | missed: nothing' \
+  '2026-11-13 | shop | add-endpoint | briefed | Add an endpoint' > "$log"
+counts="$("$shell" -c "$(printf '%s' "$look" | sed "s|<log>|$log|")" 2>&1)"
+same "19 a task that was briefed and then done counts once" \
+  "$(printf '%s\n' "$counts" | awk '$2 == "fix-cves" { print $1 }')" 1
+same "19 a task that was only briefed counts once" \
+  "$(printf '%s\n' "$counts" | awk '$2 == "add-endpoint" { print $1 }')" 1
+
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]
