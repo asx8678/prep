@@ -17,14 +17,13 @@ shell="${BASH:-bash}"
 links_to="../../.agents/skills"
 # prep is already larger than the 5,000 tokens a skill should have, so a new
 # rule has to replace an old one. Raise this number only on purpose.
-max_prep_bytes=28639
+max_prep_bytes=28810
 
 work="$(mktemp -d)" || exit 1
 work="$(cd "$work" && pwd -P)"
 trap 'rm -rf "$work"' EXIT
 
 real_path="$PATH"
-real_mktemp="$(command -v mktemp)"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 export HOME="$work/home"
 export GIT_CONFIG_GLOBAL="$work/gitconfig" GIT_CONFIG_NOSYSTEM=1
@@ -56,6 +55,7 @@ is_copy() { [ -d "$1" ] && [ ! -L "$1" ] && [ -f "$1/.installed-copy" ]; }
 is_empty_dir() { [ -d "$1" ] && [ -z "$(ls -A "$1")" ]; }
 is_skill() { cmp -s "$1" "$repo/skills/$2/SKILL.md"; }
 in_range() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
+is_under() { case "$1" in "$2"/*) return 0 ;; esac; return 1; }
 contains() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 is_stamp() {
   case "$1" in
@@ -328,12 +328,9 @@ fake_bin=""
 echo "== 15. prep's throwaway copy (the command in the skill text)"
 code_block "git clone -q" > "$work/copy.sh"
 expect "15 the command is in prep's text" test -s "$work/copy.sh"
-mkdir -p "$work/mkbin"
-printf '#!/bin/sh\nexec "%s" -d "%s/tmp.XXXXXX"\n' "$real_mktemp" "$work/mk" > "$work/mkbin/mktemp"
-chmod +x "$work/mkbin/mktemp"
 # try DIR: runs the command in DIR; sets $rc and $copy (the folder it prints)
 try() {
-  copy="$(cd "$1" && PATH="$work/mkbin:$real_path" "$shell" "$work/copy.sh" 2> "$work/out")"
+  copy="$(cd "$1" && TMPDIR="$work/mk" "$shell" "$work/copy.sh" 2> "$work/out")"
   rc=$?
 }
 new_repo; pr="$r"
@@ -348,6 +345,8 @@ before="$(tree "$pr")"
 try "$pr"
 same "15 exit 0" "$rc" 0
 expect "15 it prints the folder of the copy" test -d "$copy/.git"
+# Plain `mktemp -d` ignores TMPDIR on macOS; a sandbox may allow only TMPDIR.
+expect "15 the copy is made in TMPDIR" is_under "$copy" "$work/mk"
 same "15 the copy holds an uncommitted change" "$(cat "$copy/a.txt" 2>/dev/null)" two
 expect "15 the copy holds an uncommitted change to a binary file" cmp -s "$copy/bin.dat" "$pr/bin.dat"
 refuse "15 the copy has no untracked file" test -e "$copy/untracked.txt"
@@ -364,6 +363,11 @@ new_repo; plain="$r"
 try "$plain"
 same "15 a project with no changes: exit 0" "$rc" 0
 same "15 a project with no changes: the copy holds the committed file" "$(cat "$copy/a.txt" 2>/dev/null)" one
+git config --global clone.defaultRemoteName upstream
+try "$plain"
+same "15 with clone.defaultRemoteName set: exit 0" "$rc" 0
+same "15 with clone.defaultRemoteName set: the copy has no remote" "$(git -C "$copy" remote 2>&1)" ""
+git config --global --unset clone.defaultRemoteName
 mkdir "$work/nocommits" && git -C "$work/nocommits" init -q
 rm -rf "$work/mk" && mkdir "$work/mk"
 try "$work/nocommits"
@@ -385,6 +389,9 @@ same "16 the same state gives the same output" "$(state "$st")" "$s3"
 refuse "16 a changed file changes the output" test "$s1" = "$s0"
 refuse "16 a new untracked file changes the output" test "$s2" = "$s1"
 expect "16 an ignored file does not" test "$s3" = "$s2"
+printf 'staged\n' > "$st/a.txt"; git -C "$st" add a.txt; s4="$(state "$st")"
+printf 'staged again\n' > "$st/a.txt"; git -C "$st" add a.txt; s5="$(state "$st")"
+refuse "16 a staged file that is changed and staged again changes the output" test "$s5" = "$s4"
 
 echo "== 17. prep's step 1 command (in the skill text)"
 code_block "^date " > "$work/start.sh"
@@ -396,6 +403,8 @@ sleep 1
 second="$(start | sed -n 1p)"
 expect "17 the first line is a date and time like 2026-11-12-023300" is_stamp "$(printf '%s\n' "$first" | sed -n 1p)"
 same "17 the second line is the home folder" "$(printf '%s\n' "$first" | sed -n 2p)" "$HOME"
+same "17 the third line names the commit" "$(printf '%s\n' "$first" | sed -n 3p)" "commit: $(git -C "$st" rev-parse --short HEAD)"
+same "17 outside git the commit line is empty" "$(cd "$work/nogit" && "$shell" "$work/start.sh" 2>/dev/null | sed -n 3p)" "commit: "
 same "17 a later run sorts after an earlier one" \
   "$(printf '%s\n%s\n' "$second" "$(printf '%s\n' "$first" | sed -n 1p)" | LC_ALL=C sort -u | tail -n 1)" "$second"
 
@@ -423,6 +432,13 @@ same "19 a task that was briefed and then done counts once" \
   "$(printf '%s\n' "$counts" | awk '$2 == "fix-cves" { print $1 }')" 1
 same "19 a task that was only briefed counts once" \
   "$(printf '%s\n' "$counts" | awk '$2 == "add-endpoint" { print $1 }')" 1
+
+echo "== 20. prep's command for a secret's key in a settings file (in the skill text)"
+cmd="$(grep -o '`grep -c [^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+expect "20 the command is in prep's text" test -n "$cmd"
+printf 'region = "eu"\ndb_password = "dummy-secret-value"\n' > "$work/settings.conf"
+same "20 a secret's key that is set: prints only a count" \
+  "$("$shell" -c "$(printf '%s' "$cmd" | sed "s|<key>|db_password|; s|<file>|$work/settings.conf|")" 2>&1)" 1
 
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]

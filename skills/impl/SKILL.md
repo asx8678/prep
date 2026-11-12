@@ -15,14 +15,21 @@ their corrections.
    Otherwise use the newest brief that is not done: of the files in
    `.briefs/` whose names start with a date and time and whose Status is
    not "done", the one that sorts last. Say in one line which file you use.
-   If there is none, say so and stop.
+   If there is none, say so and stop. If more than one such brief is not
+   done, or the one you would use is more than a day old and was not written
+   in this conversation, show the title, date and Status of each and wait
+   for the person to choose: an old brief may be abandoned, or someone
+   else's.
 2. Read the whole brief before you change anything. If its Status is "has
-   open questions", show those questions and wait for the answers. Run
-   `git status --short`. If there are uncommitted changes outside
-   `.briefs/` that the brief does not mention, ask the person before
-   you start. If the brief names a commit, check whether the places it
-   changes moved since then (`git log --oneline <commit>..HEAD -- <paths>`).
-   If they did, tell the person before you start.
+   open questions", show those questions and wait for the answers; then
+   write them into the brief under Decisions (by: person) and set its
+   Status to "ready". Run `git status --short`. If there are uncommitted
+   changes outside `.briefs/` that the brief does not mention, ask the
+   person before you start. If the brief names a commit, check whether the
+   places it changes moved since then
+   (`git log --oneline <commit>..HEAD -- <paths>`). If they did, or the
+   brief says the tree had uncommitted changes, show the person what you
+   found and ask before you start.
 3. If this conversation also holds the /prep run that wrote the brief,
    follow the brief wherever the two differ.
 4. Do the work described under Approach and Changes, and nothing else:
@@ -40,7 +47,8 @@ their corrections.
    failure is already in the baseline and the brief does not ask you to
    fix it, report it instead of fixing it. Never make a proof pass by
    weakening it: do not change the expected result, skip or delete tests,
-   or add ignore entries (such as `.trivyignore`), unless the brief says
+   add retries, longer timeouts or fixed waits,
+   or add ignore entries for a scanner or a linter, unless the brief says
    so. Then read your own diff the way a strict reviewer would: every
    change follows the brief, nothing in the brief is missing, and nothing
    extra slipped in. Ask of each change: is it correct, does it make sense,
@@ -61,16 +69,19 @@ their corrections.
 ## Always
 
 - Check secrets by name only, and never open or print a value (no
-  `cat .env`, `env`, `printenv`, `kubectl get secret -o ...`,
-  `terraform output -json` or `get-secret-value`).
-- Read a live system (a plan, `kubectl`, a cloud CLI, or a test or app start
-  that reaches a shared service) only if the brief's Decisions say the
+  `cat .env`, `env` or `printenv`, and no command that gets, decrypts or
+  dumps a secret, or prints one you ask for by name).
+- Read a live system (a plan, a cluster or cloud command, or a test or app
+  start that reaches a shared service) only if the brief's Decisions say the
   person allowed it, or they allow it now. Report any check you skipped.
 - Never run `git stash`, `checkout`, `restore`, `reset` or `clean`: they can
   erase the person's own work. Undo your own edits by editing the files back.
-- Do not commit, push, deploy, or change a live system or Terraform state
-  (such as `apply`, `helm upgrade`, `kubectl delete`, `terraform destroy`,
-  `terraform state mv` or a migration) unless the person asks for it in this
-  conversation, right before you run it, after seeing what will change. A
-  decision in the brief is not enough. For Terraform, apply the saved plan
-  the person saw: `terraform plan -out=<file>`, then `terraform apply <file>`.
+- Do not commit, push, deploy, or change a live system or infrastructure
+  state (such as an apply, an upgrade, a delete, a destroy, a state change or
+  a migration) unless the person asks for it in this conversation, right
+  before you run it, after seeing what will change. A decision in the brief
+  is not enough. Where the tool can save a plan, apply the saved plan the
+  person saw, not a new one.
+- Keep command output short, because it is re-sent on every later step:
+  `| tail -n 40`, or a test runner's summary. A pipe hides the command's
+  exit code, so judge a check by its output.
