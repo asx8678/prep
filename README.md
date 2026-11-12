@@ -471,12 +471,14 @@ behind when it failed, that the installer wrote to `~/.briefs/` although it
 said it did not, and that a link inside a linked skills folder did not open.
 All are fixed.
 
-The installer and the commands in the skills pass 76 checks: no git, a
-subfolder, a second run, upgrades, your edits, copy mode, edited copies,
-copies from older installers, your own links and folders, a linked skills
-folder, a worktree, Windows line endings, Windows clones with `--copies` and
-`--undo-copies`, the choice of tools, unknown names and options, the throwaway
-copy and the brief names. Windows was simulated on Linux (git without link
+The installer and the commands in the skills pass the 135 checks in
+[`tests/run.sh`](tests/run.sh): no git, a subfolder, a second run, upgrades,
+your edits, copy mode, edited copies, copies from older installers, your own
+links and folders, a linked skills folder, a worktree, Windows line endings,
+Windows clones with `--copies` and `--undo-copies`, the choice of tools,
+unknown names and options, the throwaway copy and the brief names. Run them
+with `bash tests/run.sh`. GitHub runs them on Linux and macOS for every push
+to `main` and every pull request. Windows is simulated (git without link
 support, and an `ln` that copies as Git Bash does), not run on a real
 Windows machine.
 
@@ -505,6 +507,13 @@ The build also adds the new versions to `shipped-versions.txt`. Commit that
 file with the installer, so that later installers recognise those versions and
 update them without asking.
 
+Then run the checks. They also tell you when the installer was not rebuilt,
+or when `prep` has grown:
+
+```bash
+bash tests/run.sh
+```
+
 ## Remove
 
 The installer has no uninstall step, so removal is manual. In the repository:
@@ -524,10 +533,13 @@ you; delete it too. Keep or delete `.briefs/` (your briefs) and `~/.briefs/`
 ## Ideas borrowed
 
 - Three options (minimal, clean, pragmatic): Anthropic's *feature-dev* plugin
-- Root-cause debugging and checking the builder's work: *superpowers*
+- Root-cause debugging, checking the builder's work, one check that nothing
+  else broke, and saying what a review did not check: *superpowers*
 - Ranking questions by impact and making vague words measurable: GitHub's
   *Spec Kit*
 - `WHEN … THE SYSTEM SHALL …` requirement lines (EARS): *Kiro*
+- A check that ends by itself: *Prompt Fixer*
+- Questions that make sense on their own: *agentic-council*
 
 ## License
 

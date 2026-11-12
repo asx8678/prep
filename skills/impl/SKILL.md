@@ -61,8 +61,8 @@ their corrections.
 ## Always
 
 - Check secrets by name only, and never open or print a value (no
-  `cat .env`, `kubectl get secret -o ...`, `terraform output -json` or
-  `get-secret-value`).
+  `cat .env`, `env`, `printenv`, `kubectl get secret -o ...`,
+  `terraform output -json` or `get-secret-value`).
 - Read a live system (a plan, `kubectl`, a cloud CLI, or a test or app start
   that reaches a shared service) only if the brief's Decisions say the
   person allowed it, or they allow it now. Report any check you skipped.

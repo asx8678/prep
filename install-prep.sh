@@ -63,11 +63,13 @@ cd "$root"
 # Every version of each skill file this installer has written (git blob ids).
 # A file that matches one has no changes of yours, so it can be replaced.
 shipped='
+impl 4dada40bd9c8524eb8e171916c4131e813bd37da
 impl 81b97e5864aadc388e29ef37d6ca22bb696fbb7e
 impl de458369c8fc8ccab0b721f3462b17753786ca74
 prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
 prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
 prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc
+prep 9957bab37874cc5af42717499fa1b8ff27d00829
 prep d949b43a3b0afb75b12ea76064fe845e2378099b
 prep e32bea4be892ce9652b44ef24c24b15afb63b3cb
 '
@@ -164,12 +166,9 @@ description: Turns a rough request into a precise, checkable task brief before a
 # Prep
 
 Turn a rough request into a task brief that the implementing session, maybe a
-fresh conversation, can carry out and verify without asking a single question:
-a misunderstanding is cheap to fix now and expensive after the code is
-written. Find what is missing in the code and the official docs first, and
-ask the person second. Work like the strongest senior engineer on the team:
-curious, thorough, honest about what you do not know, and trusted because
-every claim is checked and the first idea tested before it is recommended.
+fresh conversation, can carry out and verify without asking a single question.
+Find what is missing in the code and the official docs first, and ask the
+person second.
 
 ## Ground rules
 
@@ -204,7 +203,8 @@ every claim is checked and the first idea tested before it is recommended.
   project's agent instructions. Record what they allowed under Decisions.
 - Keep secrets out: check a secret by its name, never its value. When a file
   or command can show one, use a form that shows names only: `.env.example`,
-  not `.env`; in `*.tfvars` or Helm values, `grep` only the key you need;
+  not `.env`; for an environment variable, `echo "${NAME:+set}"`, not `env`
+  or `printenv`; in `*.tfvars` or Helm values, `grep` only the key you need;
   `kubectl get secret <name>` without `-o`; `describe-secret`, not
   `get-secret-value` or `--with-decryption`; `terraform output` without
   `-json` or `-raw`; `terraform state list`, not `state pull`, `show -json`
@@ -219,7 +219,8 @@ every claim is checked and the first idea tested before it is recommended.
 - Make answering easy: plain words, short messages, statements and questions
   numbered in one list, each question's options lettered, and your tool's
   multiple-choice questions if it has them (if they are refused, as in
-  Claude Code's dontAsk mode, ask them as plain text). Write in English
+  Claude Code's dontAsk mode, ask them as plain text). Such a question must
+  make sense alone: the person may not see your message. Write in English
   unless asked.
 - Scale to the task. A small task changes one or two files, has one obvious
   approach and touches nothing live; keep every step short for it. Offer to
@@ -244,8 +245,9 @@ repository's top folder. Log lines look like this:
 
 ## Steps
 
-End your message to let the person reply only in these cases: after the
-step 5 message if it is a review result or has a warning or a question,
+This file has ten steps and a brief template. If you cannot see it all, read
+it again. End your message to let the person reply only in these cases: after
+the step 5 message if it is a review result or has a warning or a question,
 when you show the brief in step 9, when step 10 changes what the brief will
 do, and earlier if the request itself is unclear or clearly dangerous.
 
@@ -415,9 +417,10 @@ consult it again only when this skill or the person asks.
 For a review or a diagnosis, the message is the result. Put the findings
 first, most serious first, each with the command that shows it and what it
 printed (or UNVERIFIED), and the fix for each, tried in a throwaway copy
-where you could. Then say briefly what is good. Ask only what would change
-the findings, then offer a brief for the fixes and stop. If the person
-accepts, the fixes become the change: go on with steps 6 to 10.
+where you could. Then say briefly what is good and what you did not check.
+Ask only what would change the findings, then offer a brief for the fixes
+and stop. If the person accepts, the fixes become the change: go on with
+steps 6 to 10.
 
 For a change, send one message with these parts, in this order:
 
@@ -467,7 +470,8 @@ read a live system, so they follow the live-system rule. Filter a plan's
 output, for example:
 `terraform plan -lock=false -input=false -no-color | grep -E '# .* (will|must) be|Plan:|No changes'`.
 Never apply, deploy, push, migrate, pull, checkout or stash. Prefer the
-narrowest command that covers the change.
+narrowest command that covers the change. A check must end by itself: no
+watch mode, no app or server left running.
 
 Run this before and after; it sees changed, new and untracked files, but not
 ignored ones such as caches a test writes:
@@ -576,8 +580,7 @@ After the reply, do these in order:
      the context, if your tool shows it), there is no need to start over:
      type `/impl` here (in Pi: `/skill:impl`), or say "go ahead".
    - If it is long, start fresh: type `/clear` (in Pi: `/new`), then
-     `/impl`. A fresh conversation holds only the brief and the files it
-     changes, so each step costs less and the model stays focused.
+     `/impl`.
 
    Just before that sentence, if the task is small or a dedicated skill
    covers it, say that a cheaper model is enough for `/impl`. If the person
@@ -667,7 +670,8 @@ missing access, steps that cannot be undone, and risks the person accepted.
 ## Proof
 For the implementing session: exact commands, the result that means success, and what each
 printed when you ran it today (the baseline), or UNTESTED with the reason. Each check shows
-the problem before the change. None of them may deploy, apply or migrate.
+the problem before the change; one more runs the project's tests to show nothing else
+broke. None of them may deploy, apply or migrate.
 After deploy, for the person: checks that need the change live, such as a health check.
 
 ## Sources
@@ -754,8 +758,8 @@ their corrections.
 ## Always
 
 - Check secrets by name only, and never open or print a value (no
-  `cat .env`, `kubectl get secret -o ...`, `terraform output -json` or
-  `get-secret-value`).
+  `cat .env`, `env`, `printenv`, `kubectl get secret -o ...`,
+  `terraform output -json` or `get-secret-value`).
 - Read a live system (a plan, `kubectl`, a cloud CLI, or a test or app start
   that reaches a shared service) only if the brief's Decisions say the
   person allowed it, or they allow it now. Report any check you skipped.
