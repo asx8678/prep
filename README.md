@@ -69,24 +69,54 @@ impl:  writes failing tests → makes the change → runs the proof → reports
 
 ## Install
 
-Run the installer inside the git repository where you want the skills. It is
-plain bash, so read it first.
+Download the installer and run it. It is plain bash, so read it first.
 
 ```bash
-cd your-repo
 curl -fsSL https://raw.githubusercontent.com/asx8678/prep/main/install-prep.sh -o install-prep.sh
 less install-prep.sh
 bash install-prep.sh
 ```
 
-It sets up Claude Code, Kiro CLI and Pi, or only the tools you name
-(`bash install-prep.sh claude`). The skills go to `.agents/skills/`, with
-links from `.claude/skills/` and `.kiro/skills/`, and nothing is written
-outside the repository. To update, download and run it again: a skill file
-you edited is kept. It ends with setup notes for each tool, and `--help`
-lists every option, including the ones for Windows clones without link
-support. In Pi, run `/trust` first, because Pi loads project skills only from
-a trusted project.
+A small menu asks where, what and for which tools:
+
+```text
+Install, update or remove the prep and impl skills. Where?
+  1) Every project on this computer   /home/you
+  2) Only this repository             /home/you/your-repo
+  q) Quit
+> 1
+
+The prep and impl skills are not installed in /home/you
+  1) Install   for the tools you choose next
+  2) Update    what is installed, to the version inside this file
+  3) Remove    what this installer made; a skill file you changed is kept
+  q) Quit
+> 1
+
+For which tools? A number switches one on or off; Enter alone goes on.
+  1) [x] Claude Code   links in .claude/skills
+  2) [x] Kiro CLI      links in .kiro/skills
+  3) [x] Pi            reads .agents/skills, where the real copy always goes
+  q) Quit
+>
+```
+
+- **Every project** puts the skills in `~/.agents/skills/`, with links from
+  `~/.claude/skills/` and `~/.kiro/skills/`.
+- **Only this repository** is offered inside a git repository. It uses the
+  same three folders there and writes nothing outside it. In Pi, run `/trust`
+  first, because Pi loads project skills only from a trusted project.
+- **Install** sets up the tools you leave switched on and ends with setup
+  notes for each. Switching a tool off does not remove it; Remove does.
+  **Update** refreshes only what is installed. Both keep a skill file you
+  edited.
+- The installer carries the skill text, so for a newer version download it
+  again and choose Update.
+
+To skip the menu, name the action: `bash install-prep.sh install --global`,
+or `bash install-prep.sh install claude` for one tool in the repository.
+`--help` lists every option, including the ones for Windows clones without
+link support.
 
 <details>
 <summary>Other install methods</summary>
@@ -136,26 +166,20 @@ or git.
 
 ## Uninstall
 
-There is no uninstall step. In the repository, remove the six paths the
-installer made:
+Run the installer and choose **Remove**, or name it:
 
 ```bash
-rm -rf .agents/skills/prep .agents/skills/impl \
-       .claude/skills/prep .claude/skills/impl \
-       .kiro/skills/prep .kiro/skills/impl
+bash install-prep.sh remove --global   # every project
+bash install-prep.sh remove            # the repository you are in
 ```
 
-- If you used `--copies`, run `bash install-prep.sh --undo-copies` first, or
-  git will not see that the links are gone.
-- That leaves the downloaded `install-prep.sh`, `.git/prep-install/` (a new
-  version the installer kept next to an edit of yours, or nothing) and the
-  now empty `.agents/skills`, `.claude/skills` and `.kiro/skills`. Delete
-  them too if nothing else uses them.
-- Copied by hand? Delete `prep` and `impl` from `~/.claude/skills/`,
-  `~/.kiro/skills/` and `~/.agents/skills/`.
+- It removes the skill folders and links it made, and a skill you copied in
+  by hand and did not change. A skill file you edited is kept, with its
+  links; delete that file and run Remove again to finish.
+- Other skills and the `skills` folders themselves stay, and so do your
+  briefs in `.briefs/` and your record in `~/.briefs/`.
+- Delete the downloaded `install-prep.sh` yourself.
 - In the Claude app, delete each skill under Customize > Skills.
-- Your briefs in `.briefs/` and your record in `~/.briefs/` stay until you
-  delete them.
 
 ## License
 
