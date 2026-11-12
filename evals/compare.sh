@@ -11,11 +11,12 @@
 # With OLD=none the exit code is the eval tool's. It is 1 when a case scores
 # below 1.0 with the skills, which is a result and not a failure of this
 # script; the results folder is printed either way.
-# On macOS the eval's sandbox blocks /usr/bin/git, which is Apple's shim, and
-# plain `mktemp -d`. For git, the runs get a wrapper around the git that
-# `xcrun -f git` names, first on PATH; the `git-ran` grader of the e2e cases
-# shows whether git then worked. `mktemp -d` stays blocked. Both arms get
-# the same.
+# On macOS the runs have no git. The eval's sandbox blocks /usr/bin/git,
+# which is Apple's shim, and four ways around it failed on 2026-11-12: a
+# wrapper script in the temp folder, in /private/tmp or in a case's
+# `add_dirs` folder, and the real git's folder on PATH. The `git-ran`
+# grader of the e2e cases shows whether git worked. Plain `mktemp -d` is
+# blocked too. Both arms get the same.
 set -euo pipefail
 # 64, not 1 or 2: those are the eval tool's codes, which OLD=none passes on.
 case " $* " in
@@ -30,14 +31,6 @@ out="$repo/evals/results/$(date +%Y-%m-%d-%H%M%S)"
 work="$(mktemp -d)"
 trap 'rm -rf "${work:?}"' EXIT
 mkdir -p "$out"
-
-# A link would not do: git looks for its helpers next to the link.
-if xcode_git="$(xcrun -f git 2>/dev/null)"; then
-  mkdir "$work/bin"
-  printf '#!/bin/sh\nexec "%s" "$@"\n' "$xcode_git" > "$work/bin/git"
-  chmod +x "$work/bin/git"
-  PATH="$work/bin:$PATH"
-fi
 
 arms="old new"
 if [ "$old" = none ]; then arms="new"; fi

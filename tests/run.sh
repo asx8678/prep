@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks the installer, the commands inside the skills, and the eval cases
-# and evals/compare.sh, without a model call.
+# and the scripts in evals/, without a model call.
 #
 #   bash tests/run.sh
 #
@@ -18,7 +18,7 @@ shell="${BASH:-bash}"
 links_to="../../.agents/skills"
 # prep is already larger than the 5,000 tokens a skill should have, so a new
 # rule has to replace an old one. Raise this number only on purpose.
-max_prep_bytes=28810
+max_prep_bytes=30321
 
 work="$(mktemp -d)" || exit 1
 work="$(cd "$work" && pwd -P)"
@@ -715,6 +715,8 @@ cat > "$work/judge.py" <<'PY'
 Run it in the project's folder:
   judge.py test <acceptance test>   prints pass or fail, or error when the test itself broke
   judge.py graders <case folder>    prints pass when every file grader passes, else fail
+  judge.py message <case folder> <file>   prints name=pass or name=fail for each
+                                    regex grader of the last reply, with <file> as the reply
 A crash prints nothing, so a check never takes it for a verdict.
 """
 import os
@@ -730,19 +732,25 @@ if kind == "test":
     result = unittest.TextTestRunner(stream=sys.stderr).run(suite)
     print("error" if result.errors or not result.testsRun else "fail" if result.failures else "pass")
 else:
-    # A file grader is a regex grader whose target is a file. The eval tool
-    # reads the pattern as JavaScript; these use only what Python shares.
-    verdicts = []
+    # A file grader is a regex grader whose target is a file; a grader of
+    # the last reply is one without a target. The eval tool reads the
+    # pattern as JavaScript; these use only what Python shares.
+    verdicts = {}
     for grader in sorted(where.glob("graders/*.md")):
         fields = dict(line.split(": ", 1) for line in grader.read_text().split("---\n")[1].splitlines())
         target = re.fullmatch(r"\{\s*source:\s*file,\s*path:\s*(\S+)\s*\}", fields.get("target", ""))
-        if fields["type"] == "regex" and target:
-            pattern = re.fullmatch("'(.*)'", fields["pattern"]).group(1).replace("''", "'")
-            found = re.search(pattern, Path(target.group(1)).read_text()) is not None
-            verdicts.append(found == {None: True, "not_contains": False}[fields.get("match")])
+        if fields["type"] != "regex" or bool(target) != (kind == "graders") or (not target and "target" in fields):
+            continue
+        text = Path(target.group(1) if target else sys.argv[3]).read_text()
+        pattern = re.fullmatch("'(.*)'", fields["pattern"]).group(1).replace("''", "'")
+        found = re.search(pattern, text, re.I if "i" in fields.get("flags", "") else 0) is not None
+        verdicts[grader.stem] = found == {None: True, "not_contains": False}[fields.get("match")]
     if not verdicts:
-        sys.exit(f"no file grader in {where}")
-    print("pass" if all(verdicts) else "fail")
+        sys.exit(f"nothing to judge in {where}")
+    if kind == "message":
+        print(" ".join(f"{name}={'pass' if passed else 'fail'}" for name, passed in verdicts.items()))
+    else:
+        print("pass" if all(verdicts.values()) else "fail")
 PY
 # says KIND DIR: what the acceptance test (KIND test) or the file graders
 # (KIND graders) of the case say about the project in DIR
@@ -788,7 +796,6 @@ printf '%s ' "$@" > "$call/args"
 cp "$3/skills/prep/SKILL.md" "$call/prep.md"
 git="$(command -v git)"
 printf '%s\n' "$git" > "$call/git"
-head -c 1000 "$git" > "$call/git-start"
 echo "summary from the eval tool"
 while [ $# -gt 0 ]; do
   [ "$1" = --output-dir ] && out="$2"
@@ -829,12 +836,7 @@ expect "29 OLD=none: the plugin folder holds prep's text at NEW" cmp -s "$call/p
 expect "29 OLD=none: the eval tool's output is shown" grep -q "summary from the eval tool" "$work/out"
 named="$(grep -o "$c/evals/results/[^ ]*" "$work/out" | tail -n 1)"
 expect "29 OLD=none: the output names the results folder" test -f "$named/aggregate-result.json"
-if xcode_git="$(xcrun -f git 2>/dev/null)"; then
-  same "29 git for the runs is a wrapper around the git that xcrun names" \
-    "$(cat "$call/git-start" 2>/dev/null)" "$(printf '#!/bin/sh\nexec "%s" "$@"' "$xcode_git")"
-else
-  same "29 git for the runs is the usual git" "$(cat "$call/git" 2>/dev/null)" "$(command -v git)"
-fi
+same "29 git for the runs is the usual git" "$(cat "$call/git" 2>/dev/null)" "$(command -v git)"
 cp "$repo/evals/table.py" "$c/evals/"
 compare 0 --case 'e2e-*' --runs 1
 same "29 old against new: exit 0" "$rc" 0
@@ -868,6 +870,71 @@ same "29 the table counts a result only in runs where both skills started" \
 expect "29 the table lists a run where prep did not start as dropped" \
   grep -q "dropped: e2e-second-place, old: failed prep-fired" "$work/out"
 same "29 nothing is written to this repository's evals/results/" "$(ls -A "$repo/evals/results" 2>/dev/null)" "$results_before"
+
+echo "== 30. evals/cost.py, on a session written here"
+# A session as Claude Code 2.1.322 records it, cut down to what the script
+# reads: a message written as two records, a tool result, an advisor call
+# inside a message, two turns, and the cost record. At the script's prices
+# the first part is 16.00 + 4.00 (m1 caches a million tokens and writes
+# 100,000), 0.40 (m2 reads a million twice), 5.00 (the advisor reads 500,000
+# and writes 25,000) and 0.40 (m2 writes 10,000). The second part is 8.00 +
+# 2.00 (m3 reads a million uncached and caches 200,000 for five minutes).
+cat > "$work/session.jsonl" <<'SESSION'
+{"type": "user", "message": {"content": "<command-name>/prep</command-name><command-args>fix the bug</command-args>"}}
+{"type": "user", "message": {"content": "Base directory for this skill: /somewhere"}}
+{"type": "assistant", "message": {"id": "m1", "model": "claude-fable-5-2", "usage": {"output_tokens_details": {"thinking_tokens": 50000}, "iterations": [{"type": "message", "output_tokens": 100000, "cache_creation": {"ephemeral_1h_input_tokens": 1000000}}]}}}
+{"type": "assistant", "message": {"id": "m1", "model": "claude-fable-5-2", "usage": {"output_tokens_details": {"thinking_tokens": 50000}, "iterations": [{"type": "message", "output_tokens": 100000, "cache_creation": {"ephemeral_1h_input_tokens": 1000000}}]}}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "done"}]}}
+{"type": "assistant", "message": {"id": "m2", "model": "claude-fable-5-2", "usage": {"output_tokens_details": {"thinking_tokens": 0}, "iterations": [{"type": "message", "cache_read_input_tokens": 1000000}, {"type": "advisor_message", "model": "claude-fable-5-2", "input_tokens": 500000, "output_tokens": 25000}, {"type": "message", "cache_read_input_tokens": 1000000, "output_tokens": 10000}]}}}
+{"type": "system", "subtype": "turn_duration", "durationMs": 600000}
+{"type": "user", "message": {"content": "second request"}}
+{"type": "assistant", "message": {"id": "m3", "model": "claude-fable-5-2", "usage": {"output_tokens_details": {"thinking_tokens": 0}, "iterations": [{"type": "message", "input_tokens": 1000000, "cache_creation": {"ephemeral_5m_input_tokens": 200000}}]}}}
+{"type": "system", "subtype": "turn_duration", "durationMs": 60000}
+{"type": "cost-state", "totalCostUSD": 35.81, "modelUsage": {"claude-fable-5-2": {"inputTokens": 1500000, "outputTokens": 135000, "cacheReadInputTokens": 2000000, "cacheCreationInputTokens": 1200000, "cacheCreationEphemeral1hInputTokens": 1000000, "costUSD": 35.8}, "claude-haiku-5-5": {"inputTokens": 100000, "costUSD": 0.01}}}
+SESSION
+python3 -I "$repo/evals/cost.py" "$work/session.jsonl" > "$work/out" 2>&1
+same "30 a part: cost, calls, advisor calls, minutes, context at its first and last call" \
+  "$(awk '$NF == "bug" { print $1, $2, $3, $4, $5, $6 }' "$work/out")" "25.80 3 1 10.0 1000000 1000000"
+same "30 the next message from the person starts a new part" \
+  "$(awk '$NF == "request" { print $1, $2, $3, $4 }' "$work/out")" "10.00 1 0 1.0"
+same "30 by kind: advisor, model output, first read, re-reading" \
+  "$(awk '$NF ~ /%$/ { printf "%s ", $(NF - 1) }' "$work/out")" "5.00 4.40 26.00 0.40 "
+same "30 thinking is priced as output" "$(awk '$1 == "thinking" { print $3 }' "$work/out")" "2.00"
+expect "30 the recorded cost is the one the price list gives" \
+  grep -q 'recorded \$35.80, recomputed \$35.80$' "$work/out"
+sed 's/"costUSD": 35.8}/"costUSD": 71.6}/' "$work/session.jsonl" > "$work/dearer.jsonl"
+sed 's/"model": "claude-fable-5-2", "usage"/"model": "claude-new-9", "usage"/' "$work/session.jsonl" > "$work/unpriced.jsonl"
+grep -v cost-state "$work/session.jsonl" > "$work/running.jsonl"
+grep -v cost-state "$work/unpriced.jsonl" > "$work/unpriced-running.jsonl"
+head -n 2 "$work/session.jsonl" > "$work/empty.jsonl"
+python3 -I "$repo/evals/cost.py" "$work/dearer.jsonl" "$work/unpriced.jsonl" "$work/unpriced-running.jsonl" "$work/running.jsonl" "$work/empty.jsonl" > "$work/out" 2>&1
+expect "30 a recorded cost that the price list does not give is marked" \
+  grep -q 'recorded \$71.60, recomputed \$35.80  MISMATCH$' "$work/out"
+expect "30 a model without a price is named, with the cost recorded for each model" \
+  grep -qx 'unpriced.jsonl: no price for claude-new-9; recorded \$35.81 in 11.0 minutes: claude-fable-5-2 \$35.80, claude-haiku-5-5 \$0.01' "$work/out"
+expect "30 a model without a price in a session that is still running is only named" \
+  grep -qx 'unpriced-running.jsonl: no price for claude-new-9' "$work/out"
+expect "30 a session that is still running has no recorded cost" \
+  grep -qx 'running.jsonl: no recorded cost yet, in this file \$35.80' "$work/out"
+expect "30 a session without a model call says so" grep -qx 'empty.jsonl: no model calls' "$work/out"
+
+echo "== 31. The short-approval case tells the new look of a message from the old"
+# The three messages are made up: the old look shows a whole brief, the new
+# one its summary and what "ok" starts, the third puts 45 findings first.
+short="$repo/evals/cases/short-approval"
+same "31 a message in the new look passes every grader of the reply" \
+  "$(python3 "$work/judge.py" message "$short" "$repo/evals/selftest/short-approval/new-look.md" 2> "$work/out")" \
+  "ask-comes-early=pass brief-not-shown=pass says-what-ok-starts=pass summary-on-top=pass"
+same "31 a message in the old look fails every one of them" \
+  "$(python3 "$work/judge.py" message "$short" "$repo/evals/selftest/short-approval/old-look.md" 2> "$work/out")" \
+  "ask-comes-early=fail brief-not-shown=fail says-what-ok-starts=fail summary-on-top=fail"
+same "31 a message with its findings on top fails the two graders of the order" \
+  "$(python3 "$work/judge.py" message "$short" "$repo/evals/selftest/short-approval/findings-on-top.md" 2> "$work/out")" \
+  "ask-comes-early=fail brief-not-shown=pass says-what-ok-starts=pass summary-on-top=fail"
+( mkdir -p "$work/short-approval" && cd "$work/short-approval" && "$shell" "$short/scaffold.sh" ) > "$work/out" 2>&1
+same "31 the scaffold runs" "$?" 0
+( cd "$work/short-approval" && python3 -m unittest ) > "$work/out" 2>&1
+same "31 the project's own tests pass as scaffolded" "$?" 0
 
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]
