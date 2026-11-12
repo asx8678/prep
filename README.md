@@ -156,8 +156,12 @@ Notes:
 **Without the installer:** copy the two folders in [`skills/`](skills) into your
 tool's skills folder, for example `.claude/skills/` in a project, or
 `~/.claude/skills/` to use them in every project with Claude Code. You can also
-upload each folder as a custom skill in the Claude app (see
+upload them as custom skills in the Claude app: shorten each `description` to
+200 characters or fewer, the app's limit, and zip each folder so the zip holds
+`prep/SKILL.md` (see
 [How to create custom skills](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills)).
+Skills turned on there also load in Claude Code, as a second copy next to an
+installed one.
 
 ## Use
 
@@ -489,7 +493,7 @@ without printing it, picked the dated brief over a stray note, and ran every
 test module. The new text more often said how a server started for a check is
 stopped (5 of 5 against 3 of 5), but in 4 of 5 briefs the command itself still
 left it running. The review case could not tell them apart: git does not run
-in the eval's sandbox, and both versions named that as what they did not
+in the eval's sandbox on macOS, and both versions named that as what they did not
 check. Run it with `bash evals/compare.sh`; the full set cost about $13 at
 list price.
 
