@@ -136,6 +136,7 @@ impl d5764342258b6cd507c2d9069e94380153d1f56c
 impl de458369c8fc8ccab0b721f3462b17753786ca74
 impl e43a40b3611cd1ce5144cf6ac68b9c7258a09cdb
 prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
+prep 3d55b12672c6535a9c1f2f61491e8546bfcfbc5c
 prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
 prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc
 prep 8fb5cc2a1d2e8258d4e3c598c0eb7d47861974c0
@@ -473,8 +474,8 @@ do, and earlier if the request itself is unclear or clearly dangerous.
 
 The request is the text after the command, or the person's message if the
 skill started without one. If there is none, ask for it in one line. Then run
-this once. It prints the date and time (also to judge how current versions
-and docs are), the full home path, the commit and the dedicated skills:
+this once. It prints the date and time, the full home path, the commit and
+the dedicated skills:
 
 ```
 date +%Y-%m-%d-%H%M%S; echo "$HOME"; echo "commit: $(git rev-parse --short HEAD 2>/dev/null)"; ls "$HOME/.briefs/skills" 2>/dev/null || true
@@ -591,8 +592,7 @@ Then choose the approach:
 - Sketch three options: minimal change (smallest change, most reuse), clean
   (easiest to maintain over time) and pragmatic (a balance of the two). Give
   each a short name for what it does, not a letter: letters are for answers.
-  If only one is sensible, say so and why. For a small task, one line each is
-  enough.
+  If only one is sensible, say so and why.
 - Compare them on effort, how easy each is to undo, and whichever of these
   apply: the request and the official guidance; other users of what changes,
   and backward compatibility; data, state and migrations; security and
@@ -694,9 +694,9 @@ command-line tools read a live system, so they follow the live-system rule,
 and a plan must not take a lock.
 Never apply, deploy, push, migrate, pull, checkout or stash. Prefer the
 narrowest command that covers the change. A check must end by itself: no
-watch mode, and the same command starts any app or server it needs, waits
-until it answers and stops it, for example
-`(<start> & p=$!; trap "kill $p" EXIT; curl -sf --retry 5 --retry-connrefused <url>)`.
+watch mode, and the same command fails if a server already answers, starts
+the one it needs, waits until it answers and stops it, for example
+`(curl -s -o /dev/null <url> && { echo already running; exit 1; }; <start> & p=$!; trap "kill $p" EXIT; curl -sf --retry 5 --retry-connrefused <url>)`.
 
 Run this before and after; it sees changed, new and untracked files, but not
 ignored ones such as caches a test writes, or files in a nested repository:

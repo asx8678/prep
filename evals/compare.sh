@@ -3,7 +3,9 @@
 # old against new. With OLD=none it runs them with the skills at NEW and with
 # no skill at all, and shows the eval tool's own report of both.
 # Every run is a real model call on your account.
-# Usage: [OLD=<rev>|none] [NEW=<rev>] [MODEL=<model>] bash evals/compare.sh [claude plugin eval options]
+# Usage: [OLD=<rev>|none] [NEW=<rev>] [MODEL=<model>] bash evals/compare.sh --case <glob> [claude plugin eval options]
+# --case is required: without it the eval tool would run every case, which
+# nobody should start by accident. --case '*' runs every case on purpose.
 # Examples: bash evals/compare.sh --case secret-by-name --runs 1
 #           OLD=none bash evals/compare.sh --case 'e2e-*' --runs 1
 # With OLD=none the exit code is the eval tool's. It is 1 when a case scores
@@ -15,6 +17,11 @@
 # shows whether git then worked. `mktemp -d` stays blocked. Both arms get
 # the same.
 set -euo pipefail
+# 64, not 1 or 2: those are the eval tool's codes, which OLD=none passes on.
+case " $* " in
+  *" --case "* | *" --case="*) ;;
+  *) echo "evals/compare.sh: --case <glob> is required; --case '*' runs every case" >&2; exit 64 ;;
+esac
 repo="$(cd "$(dirname "$0")/.." && pwd -P)"
 old="${OLD:-b936fd9}"
 new="${NEW:-HEAD}"

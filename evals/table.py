@@ -1,7 +1,7 @@
 """Print old against new from one evals/compare.sh results folder.
 
 A run counts only if it ended without an error and passed every validity
-grader (the skill fired; the brief was saved where the prompt asked). Other
+grader (the skills fired; the brief was saved where the prompt asked). Other
 runs are reported as dropped, not as failures, because they say nothing
 about the text under test.
 Usage: python3 -I evals/table.py <results folder>
@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-VALIDITY = ("skill-fired", "brief-saved")
+VALIDITY = ("skill-fired", "brief-saved", "prep-fired", "impl-fired")
 out = Path(sys.argv[1])
 arms = {arm: json.loads((out / arm / "aggregate-result.json").read_text()) for arm in ("old", "new")}
 counts = {}
