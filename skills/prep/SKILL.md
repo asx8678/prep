@@ -58,18 +58,23 @@ person second.
   when more reading would not change what you write. Keep command output
   short, because it is re-sent on every later step: `git log -n 20`,
   `git show --stat`, `| tail -n 40`, a scanner's severity filter.
-- Make answering easy: plain words, short messages, statements and questions
-  numbered in one list, each question's options lettered, and your tool's
-  multiple-choice questions if it has them (if they are refused, as in
-  Claude Code's dontAsk mode, ask them as plain text). Such a question must
-  make sense alone: the person may not see your message. Write in English
-  unless asked.
+- Make answering easy. A message that waits for a reply opens with a few
+  plain lines the person can act on without reading further: what you found
+  or what will be done, each question with what it decides, why you ask and
+  what each answer starts, and what "ok" starts. "ok" never starts anything
+  those lines did not name. Evidence and detail follow under a Details
+  heading. Number questions and statements in one list, letter each
+  question's options, and use your tool's multiple-choice questions if it
+  has them (if they are refused, as in Claude Code's dontAsk mode, ask them
+  as plain text). Such a question must make sense alone: the person may not
+  see your message. Write in plain words, in English unless asked.
 - Scale to the task. A small task changes one or two files, has one obvious
   approach and touches nothing live; keep every step short for it.
 
 ## Where things live
 
-- The brief: `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md` in the project.
+- The brief: `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md` in the project, and
+  `.briefs/draft.md` until the person approves it.
 - The record, in `~/.briefs/`, shared by every project on this computer
   and written only when the person agrees: `log.md` (one line per recorded
   task), `tasks/` (a copy of each recorded brief) and
@@ -88,7 +93,7 @@ the repository's top folder. Log lines look like this:
 This file has ten steps and a brief template. If you cannot see it all, read
 it again. End your message to let the person reply only in these cases: after
 the step 5 message if it is a review result or has a warning or a question,
-when you show the brief in step 9, when step 10 changes what the brief will
+when you show the summary in step 9, when step 10 changes what the brief will
 do, and earlier if the request itself is unclear or clearly dangerous.
 
 ### 1. Start light
@@ -230,9 +235,8 @@ most likely reasons, and plan how the brief prevents or detects each one.
 
 To add logging or try a fix you are not sure of, use a throwaway copy, never the
 project. This copies the committed files and their uncommitted changes, but
-no submodules and no untracked or ignored files such as `.env`, cuts the
-copy's link to the project so nothing can be pushed back, and prints where
-the copy is:
+no submodules and no untracked or ignored files such as `.env`, and prints
+where the copy is:
 
 ```
 r=$(git rev-parse --show-toplevel) && d=$(mktemp -d "${TMPDIR:-/tmp}/prep.XXXXXX") && {
@@ -257,29 +261,34 @@ small, consult it once now about your approach and what you might have
 missed. Each call re-reads the whole conversation at the advisor's price, so
 consult it again only when this skill or the person asks.
 
-For a review or a diagnosis, the message is the result. Put the findings
-first, most serious first, each with the command that shows it and what it
-printed (or UNVERIFIED), and the fix for each, tried in a throwaway copy
-where you could. Then say briefly what is good and what you did not check.
-Ask only what would change the findings, then offer a brief for the fixes
-and stop. If the person accepts, the fixes become the change: go on with
+For a review or a diagnosis, the message is the result. Open with the
+verdict, what you ask (only what would change the findings) and the offer
+of a brief for the fixes. Under Details, put the findings, most serious
+first, each with the command that shows it and what it printed (or
+UNVERIFIED), and the fix for each, tried in a throwaway copy where you
+could; then say briefly what is good and what you did not check. Then
+stop. If the person accepts, the fixes become the change: go on with
 steps 6 to 10.
 
-For a change, send one message with these parts, in this order:
+For a change, send one message. It opens with:
 
 - a warning, if the request is risky or a better way exists, or if the code
   already does this, a smaller change would do, the request conflicts with
   how the project works, or the task is too big to verify in one go (then
   propose a split into ordered briefs, prepare only the first and list the
   others under Out of scope),
-- the request as you understand it, and its type,
+- the request as you understand it and what you recommend, in a few lines,
+- your questions.
+
+Under Details it gives:
+
 - what you found, as numbered statements, each with its evidence (a path, a
   command or a link), including your assumptions; mark defaults from a
   dedicated skill with "(from the skill)". For visible behaviour, one
-  statement gives a concrete example of the finished result,
-- the options, the one you recommend, the official guidance it follows, and
-  why the others lost,
-- your questions; if the statements end at 6, the first question is 7.
+  statement gives a concrete example of the finished result. If the
+  questions end at 2, the first statement is 3,
+- the type, the options, the one you recommend, the official guidance it
+  follows, and why the others lost.
 
 Ask only about decisions where the answer changes the work, at most three,
 ranked by impact times uncertainty: the one that would change the work most
@@ -295,7 +304,7 @@ Ask the person to reply like "2 is wrong, 5B", or "ok" to accept every
 recommendation. One round is the goal: ask again only when an answer opens a
 new decision, and put unknowns that would not change the work under Open
 questions. If the report has no warning and no question, do not wait: go on,
-and show the report above the brief in step 9.
+and give the report under Details in step 9.
 
 ### 6. Make sure it can be done and proved
 
@@ -334,17 +343,19 @@ mark it UNTESTED, with the reason.
 
 ### 7. Draft the brief
 
-Draft the brief from the template below in your message only; it is saved in
-step 10, once approved. Say what must be true and why, give the approach at
+Write the brief from the template below to `.briefs/draft.md`, a name `/impl`
+does not take for a brief; step 10 gives it its dated name, once approved.
+Say what must be true and why, give the approach at
 the level of places and order, and leave the line-by-line how to the
 implementing session. Be exact about names, paths, versions, limits and proof.
 
 Proof is the most important section. Each check must show the problem before
 the change, so that it really tests the change: a new or changed test fails
-today, a scanner reports the CVE today; a refactor keeps the same tests
-passing. Every line under Changes needs a check that fails if that change is
-missing or wrong. If the project cannot check this change, say so and make
-the smallest useful check part of the task. Typical proof:
+today for the reason the brief gives (quote the line that shows it), a
+scanner reports the CVE today; a refactor keeps the same tests passing. Every
+line under Changes needs a check that fails if that change is missing or
+wrong. If the project cannot check this change, say so and make the smallest
+useful check part of the task. Typical proof:
 
 | Kind of task | Proof |
 |---|---|
@@ -384,38 +395,51 @@ would catch it, the proof ran today or is marked UNTESTED with the reason, and
 nothing under Open questions would change the work. Otherwise set Status to
 "has open questions" and say what is still needed.
 
-### 9. Show the brief and ask about a record
+### 9. Show what will be done and ask about a record
 
-Show the full brief and ask for corrections. In the same message, ask in
-plain text:
+Do not show the brief: it is written for the implementing session. (If you
+cannot write files, give it under Details.) Show the person its summary, in
+plain words, without ids, line numbers or commands they need not run:
 
-> Keep a record of this task on this computer? Later preps in any project
-> may read it.
+> **What will be done:** a numbered line for each place that changes.
+> **Stays as it is:** what they might expect to change and will not.
+> **How we know it works:** the proof, in a sentence or two.
+> **Decided for you:** each assumption under Decisions.
+> **Risks:** what can go wrong, what cannot be undone, what it costs.
+> **Left for you afterwards:** such as commit, push, deploy and its checks.
+
+Leave out detail, but nothing the person might stop: a place that changes,
+a decision made for them, a risk, a step that cannot be undone, a cost, a
+write outside the project. Then ask, in plain text:
+
+> Keep a record of this task on this computer? A later prep, in any
+> project, can then learn from it.
 > - A. No.
-> - B. Yes. Add one line to the log and keep a copy of the brief.
-> - C. Yes, and also check whether I asked for something like this before,
->   so that a repeat can get a dedicated skill.
+> - B. Yes: a line in a log and a copy of the brief, in `~/.briefs/`.
+> - C. Yes, and I read the earlier tasks of this kind now, to catch what
+>   they missed. A kind that keeps coming back can get its own skill.
 
 Recommend C when this kind of task looks like it comes back or you used a
-dedicated skill, and B otherwise. "ok" accepts the brief and your
-recommendation; a reply that does not choose means A. Then end your message:
-save and record nothing before the reply.
+dedicated skill, and B otherwise. Then give this line, the letter filled in:
+`"ok" saves the brief with record <letter>. "full" shows the whole brief,
+which is in .briefs/draft.md. Or tell me what to change.` A reply that does
+not choose means A. Record nothing before the reply.
 
 ### 10. Finish
 
-After a reply that accepts or corrects the brief (answer anything else,
-then ask again), do these in order:
+After a reply that accepts or corrects the brief (for "full", show the
+brief; answer anything else; then ask again), do these in order:
 
 1. Apply the person's corrections to the brief.
 2. For C only, look back as described below.
 3. If items 1 or 2, or any later edit, changed Approach, Changes, Proof or
-   Decisions, show the changed lines and end your message; go on after the
-   person's ok.
+   Decisions, say what changed and why, with the changed lines under
+   Details, and end your message; go on after the person's ok.
 4. For B and C, add the record note below to the end of the brief, with the
    project and the type filled in.
-5. Save the brief as `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md`, with the time
-   of saving (run step 1's `date` again), so that the newest brief always
-   sorts last.
+5. Save the brief: rename `.briefs/draft.md` to
+   `.briefs/<YYYY-MM-DD-HHMMSS>-<type>.md`, with the time of saving (run
+   step 1's `date` again), so that the newest brief always sorts last.
 6. For B and C, in one shell command: create `~/.briefs/tasks/` if it is
    missing, `cp` the saved brief there as
    `<YYYY-MM-DD-HHMMSS>-<project>--<type>.md`, and append the `briefed` line

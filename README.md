@@ -23,7 +23,7 @@ first and implementation second. Both skills are plain Markdown:
 
 | Skill | What it does |
 | ----- | ------------ |
-| **`/prep`** | Surveys the code read-only, reproduces every problem it reports, reads the official docs, compares options and asks at most three questions. Then it writes a **task brief** with a proof for every change. For a review or a diagnosis it returns a **checked report** instead. |
+| **`/prep`** | Surveys the code read-only, reproduces every problem it reports, reads the official docs, compares options and asks at most three questions. Then it writes a **task brief** with a proof for every change and shows you a short summary to approve. For a review or a diagnosis it returns a **checked report** instead. |
 | **`/impl`** | Implements the newest brief, or the one you name: tests first, only the listed changes, every proof run. Reports what changed and what the brief got wrong or left out. |
 
 ## How it works
@@ -32,10 +32,13 @@ first and implementation second. Both skills are plain Markdown:
    name.
 2. **prep surveys.** Uncertain fixes are tried in a throwaway copy, never in
    your project.
-3. **It reports in one message.** Answer in one line: `2 is wrong, 5B`, or
-   `ok`.
-4. **You approve the brief.** It is saved to `.briefs/` only after you accept
-   or correct it. On request, prep keeps a record in `~/.briefs/` (later preps
+3. **It reports in one message.** The first lines say what it found, what it
+   asks and what `ok` starts; the evidence follows. Answer in one line:
+   `2 is wrong, 5B`, or `ok`.
+4. **You approve a short summary of the brief:** what will be done, what
+   stays as it is, how it is proven and what is left for you. The brief waits
+   in `.briefs/draft.md` and gets its dated name only after you accept or
+   correct it. On request, prep keeps a record in `~/.briefs/` (later preps
    in any project may read it) and checks it for repeats: a kind of task that
    comes back can get a dedicated skill.
 5. **`/impl` builds it.** It asks first when it is unclear which brief to
@@ -46,7 +49,7 @@ you:   /prep fix the CVEs in the api service
 prep:  reads the code, the scanner output and the advisories
        → one message: what it found, the options, up to 3 questions
 you:   ok
-prep:  checks its own plan and shows the brief
+prep:  checks its own plan and shows a short summary of the brief
 you:   ok
 prep:  saves .briefs/2026-11-11-170900-fix-cves.md
 you:   /impl

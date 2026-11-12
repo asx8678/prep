@@ -58,6 +58,7 @@ their corrections.
 7. Report in a few lines:
    - what changed, file by file,
    - each proof check and what it returned,
+   - where you departed from the brief and why, or "nowhere",
    - what is left for the person: commit, push, deploy, and the checks
      after deploy,
    - one line on what the brief got wrong or left out, or "nothing".
