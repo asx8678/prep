@@ -15,7 +15,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: bash install-prep.sh [claude] [kiro] [pi]
+Usage: bash install-prep.sh [claude] [kiro] [pi] [--copies | --undo-copies]
 
 Installs the prep and impl skills into the git repository you are in, for
 the tools you name, or for all three when you name none:
@@ -25,19 +25,32 @@ the tools you name, or for all three when you name none:
 The real copy always goes to .agents/skills, so Pi can use the skills
 whichever tools you name. Nothing is ever removed: to stop using a tool,
 delete its folder yourself.
+
+Only for a clone without link support (the default on Windows), where git
+checks out the committed links as small text files:
+  --copies        replace those files with local copies of the skills
+  --undo-copies   put those files back, and install nothing
 USAGE
 }
 
-tools=""
+tools="" copies=no undo=no
 for arg in "$@"; do
   arg="$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')"
   case "$arg" in
     claude|kiro|pi)
       case " $tools " in *" $arg "*) ;; *) tools="$tools $arg" ;; esac ;;
+    --copies) copies=yes ;;
+    --undo-copies) undo=yes ;;
     -h|--help) usage; exit 0 ;;
+    -*) echo "Unknown option: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
     *) echo "Unknown tool: $arg" >&2; echo >&2; usage >&2; exit 2 ;;
   esac
 done
+if [ "$copies" = yes ] && [ "$undo" = yes ]; then
+  echo "Use --copies or --undo-copies, not both." >&2
+  exit 2
+fi
+named="$tools"
 [ -n "$tools" ] || tools=" claude kiro pi"
 has() { case " $tools " in *" $1 "*) return 0 ;; esac; return 1; }
 
@@ -46,13 +59,6 @@ if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   exit 1
 fi
 cd "$root"
-echo "Installing the prep and impl skills for:$tools"
-echo "Into: $root"
-mkdir -p .briefs .agents/skills
-
-# New versions are written here first. Git never commits this folder.
-stage="$(git rev-parse --git-path prep-install)"
-kept=""
 
 # Every version of each skill file this installer has written (git blob ids).
 # A file that matches one has no changes of yours, so it can be replaced.
@@ -62,8 +68,66 @@ impl de458369c8fc8ccab0b721f3462b17753786ca74
 prep 1cfd2de67cfeeb708478679ce7106b4257a4fb4d
 prep 3f3778bcc5df06562c8eee59a635394e78e2db1d
 prep 6a0cd65eee17571a17b4b0cd0179eb684e7a9bbc
+prep d949b43a3b0afb75b12ea76064fe845e2378099b
 prep e32bea4be892ce9652b44ef24c24b15afb63b3cb
 '
+
+# A copy may be refreshed or removed when its SKILL.md is the same as the
+# source, or unchanged since this installer made it: the marker holds its id
+# then. Older installers left the marker empty; a shipped version counts too.
+copy_unchanged() {
+  local target="$1" name="$2" made now
+  made="$(cat "$target/.installed-copy" 2>/dev/null || true)"
+  now="$(git hash-object "$target/SKILL.md" 2>/dev/null)" || return 1
+  [ "$now" = "$made" ] && return 0
+  [ "$now" = "$(git hash-object ".agents/skills/$name/SKILL.md" 2>/dev/null)" ] && return 0
+  [ -z "$made" ] && printf '%s\n' "$shipped" | grep -qxF "$name $now"
+}
+
+# --undo-copies: put back the small text files that --copies replaced.
+undo_copies() {
+  local tool name target exclude restored=no
+  exclude="$(git rev-parse --git-path info/exclude)"
+  for tool in claude kiro; do
+    has "$tool" || continue
+    for name in prep impl; do
+      target=".$tool/skills/$name"
+      git ls-files -v -- "$target" | grep -q '^[Ss] ' || continue
+      if [ -d "$target" ] && ! copy_unchanged "$target" "$name"; then
+        echo "Kept $target: you changed this copy. Move your change to"
+        echo "  .agents/skills/$name/SKILL.md, delete $target, and run this again."
+        continue
+      fi
+      rm -rf "$target"
+      git update-index --no-skip-worktree -- "$target"
+      git checkout -q -- "$target"
+      if [ -f "$exclude" ]; then
+        grep -vxF "/$target/" "$exclude" > "$exclude.new" || true
+        mv "$exclude.new" "$exclude"
+      fi
+      echo "Restored $target"
+      restored=yes
+    done
+  done
+  if [ "$restored" = yes ]; then
+    echo "Git tracks these links normally again. Nothing in .agents/skills was touched."
+  else
+    echo "Nothing to undo: no link here is replaced by a local copy."
+  fi
+}
+
+if [ "$undo" = yes ]; then
+  undo_copies
+  exit 0
+fi
+
+echo "Installing the prep and impl skills for:$tools"
+echo "Into: $root"
+mkdir -p .briefs .agents/skills
+
+# New versions are written here first. Git never commits this folder.
+stage="$(git rev-parse --git-path prep-install)"
+kept=""
 
 install_skill_file() {
   local name="$1"
@@ -196,6 +260,11 @@ and docs are), the full home path, the commit and the dedicated skills:
 date +%Y-%m-%d-%H%M%S; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
 ```
 
+If the folder is not a git repository (for example an uploaded file in a
+chat), the git commands in this skill fail there: search with `grep -rn`,
+try a fix on a `cp -R` copy in a folder from `mktemp -d`, and find the files
+a command changed with `find . -newer <a file you made just before it>`.
+
 Give the request a type name of two or three words, lowercase with hyphens,
 such as `fix-cves` or `add-load-balancer`. Then check whether a dedicated
 skill covers this kind of task, by meaning, against the folder names you just
@@ -225,7 +294,7 @@ Decide what the person wants back. For a change (fix, add, update, remove),
 the result is a brief. For a review, a diagnosis or a question (what is
 wrong, why does it fail, is it safe), nothing changes yet: the result is a
 checked report, built with steps 3 and 4 and sent as step 5 describes, and
-steps 6 to 10 are skipped.
+steps 6 to 10 wait until the person accepts a brief for the fixes.
 
 ### 3. Survey the code
 
@@ -240,10 +309,11 @@ commit that introduced it (`git show --stat <commit>`).
 Look for earlier work on the same problem, for example with
 `git log --oneline -n 20 -i --grep=<word>`,
 `git log --oneline -n 20 -S <name>` and, if your tool can see pull requests,
-`gh pr list --state all --search <word>`. A reverted or half-done attempt
-tells you what to avoid. When something surprises you, such as a disabled
-test, a TODO, a workaround or a recent revert, find out why before you plan
-around it.
+`gh pr list --state all --search <word>` (GitHub) or
+`az repos pr list --status all --top 50 --output table | grep -i <word>`
+(Azure DevOps). A reverted or half-done attempt tells you what to avoid.
+When something surprises you, such as a disabled test, a TODO, a workaround
+or a recent revert, find out why before you plan around it.
 
 Also find:
 
@@ -321,15 +391,19 @@ no untracked or ignored files such as `.env`, cuts the copy's link to the
 project so nothing can be pushed back, and prints where the copy is:
 
 ```
-r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && git clone -q "$r" "$d/try" &&
-git -C "$d/try" remote remove origin &&
-{ git -C "$r" diff --quiet HEAD || git -C "$r" diff HEAD --binary | git -C "$d/try" apply; } && echo "$d/try"
+r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && {
+  git clone -q "$r" "$d/try" && git -C "$d/try" remote remove origin &&
+  { git -C "$r" diff --quiet HEAD ||
+    git -C "$r" -c diff.noprefix=false diff HEAD --binary --no-ext-diff --no-textconv --no-color |
+    git -C "$d/try" apply; } &&
+  echo "$d/try" || { rm -rf "$d"; false; }; }
 ```
 
 Copy in any untracked file the trial needs. Make the change and run the
 proof there, record what it printed, then delete the folder `mktemp` made.
 If the command fails, for example because the project has no commits yet,
-say that the trial could not run; do not try it in the project instead.
+it removes its own folder: say that the trial could not run, and do not try
+it in the project instead.
 
 ### 5. Report and ask, in one message
 
@@ -342,7 +416,8 @@ For a review or a diagnosis, the message is the result. Put the findings
 first, most serious first, each with the command that shows it and what it
 printed (or UNVERIFIED), and the fix for each, tried in a throwaway copy
 where you could. Then say briefly what is good. Ask only what would change
-the findings, then offer a brief for the fixes and stop.
+the findings, then offer a brief for the fixes and stop. If the person
+accepts, the fixes become the change: go on with steps 6 to 10.
 
 For a change, send one message with these parts, in this order:
 
@@ -695,18 +770,6 @@ their corrections.
 IMPL_SKILL_EOF
 install_skill_file impl
 
-# A copy may be refreshed when its SKILL.md is the same as the source, or
-# unchanged since this installer made it: the marker holds its id then.
-# Older installers left the marker empty; a shipped version counts too.
-copy_unchanged() {
-  local target="$1" name="$2" made now
-  made="$(cat "$target/.installed-copy" 2>/dev/null || true)"
-  now="$(git hash-object "$target/SKILL.md" 2>/dev/null)" || return 1
-  [ "$now" = "$made" ] && return 0
-  [ "$now" = "$(git hash-object ".agents/skills/$name/SKILL.md")" ] && return 0
-  [ -z "$made" ] && printf '%s\n' "$shipped" | grep -qxF "$name $now"
-}
-
 # A link where possible. Where links are not available (for example Git Bash
 # on Windows, where ln -s copies), a marked copy that every run refreshes.
 # Links and folders this installer did not make are left alone, and so is a
@@ -724,9 +787,17 @@ link_skill() {
     return 0
   fi
   # Without link support (core.symlinks=false, the default on Windows), git
-  # checks out a committed link as a small file that holds its target. Replace
-  # it, and tell git to ignore that local change so it is never committed.
+  # checks out a committed link as a small file that holds its target. Leave
+  # it alone and explain the choices at the end. Only with --copies: replace
+  # it with a copy, and tell git to ignore that local change so it is never
+  # committed. Git then refuses to switch to a branch without this link, so
+  # this is never done unasked.
   if [ -f "$target" ] && [ "$(cat "$target")" = "$want" ]; then
+    if [ "$copies" != yes ]; then
+      textlinks="$textlinks $target"
+      echo "Skipped $target: git checked this link out as a small text file"
+      return 0
+    fi
     rm -f "$target"
     git update-index --skip-worktree -- "$target" 2>/dev/null || true
     local exclude; exclude="$(git rev-parse --git-path info/exclude)"
@@ -746,18 +817,20 @@ link_skill() {
     return 0
   fi
   rm -rf "$target"
-  if ln -s "$want" "$target" 2>/dev/null && [ -L "$target" ]; then
+  # The link must also open: it does not when the tool folder is itself a
+  # link to a folder somewhere else.
+  if ln -s "$want" "$target" 2>/dev/null && [ -L "$target" ] && [ -e "$target/SKILL.md" ]; then
     echo "Linked $target"
   else
     rm -rf "$target"
     cp -R ".agents/skills/$name" "$target"
     rm -f "$target/SKILL.md.bak"
     git hash-object "$target/SKILL.md" > "$target/$mark"
-    echo "Copied to $target (no links here: edit .agents/skills/$name/SKILL.md, then run this again to refresh the copy)"
+    echo "Copied to $target (a link does not work here: edit .agents/skills/$name/SKILL.md, then run this again to refresh the copy)"
   fi
 }
 
-hidden=""
+hidden="" textlinks=""
 
 for tool in claude kiro; do
   has "$tool" || continue
@@ -766,18 +839,8 @@ for tool in claude kiro; do
   done
 done
 
-# The record of tasks is kept once per computer, in the home folder.
-# The skill writes there only after you say yes at the end of a /prep.
-header='<!-- One line per recorded task: date, project, type, briefed or done, text -->'
-if [ -n "${HOME:-}" ] && [ -d "$HOME" ] && mkdir -p "$HOME/.briefs/tasks" "$HOME/.briefs/skills" 2>/dev/null; then
-  if [ ! -e "$HOME/.briefs/log.md" ]; then
-    printf '%s\n' "$header" > "$HOME/.briefs/log.md"
-  fi
-  echo "Record folder ready: $HOME/.briefs"
-else
-  echo "Could not create a .briefs folder in your home folder."
-  echo "The skills still work. They just cannot keep a record of tasks."
-fi
+# Nothing is written outside this repository. The record of tasks in the home
+# folder is created by /prep, and only after you say yes at the end of one.
 
 # What to do next, only for the tools that were set up.
 cat <<'DONE'
@@ -877,12 +940,38 @@ skills, and the briefs in .briefs/ if the team should see them (git shows
 .briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
 COMMIT
 
+if [ -n "$textlinks" ]; then
+  cat <<TEXTLINKS
+
+This clone has no link support, so git checked out these links as small text
+files, and the skills cannot be loaded through them:
+ $textlinks
+Pi is not affected: it reads .agents/skills directly. Choose one:
+
+  1. Turn on link support (the clean way). On Windows, turn on Developer
+     Mode first. Then, in this repository:
+       git config core.symlinks true
+       rm$textlinks
+       git checkout --$textlinks
+     and run this installer again.
+
+  2. Use local copies instead:
+       bash install-prep.sh$named --copies
+     Git then refuses to switch to a branch that does not have these links,
+     and to pull a change to them, until you run:
+       bash install-prep.sh$named --undo-copies
+TEXTLINKS
+fi
 if [ -n "$hidden" ]; then
-  echo
-  echo "This clone has no link support, so git checked out these links as small"
-  echo "files:$hidden"
-  echo "They are now copies, and git ignores that local change (skip-worktree and"
-  echo ".git/info/exclude), so it is never committed."
+  cat <<HIDDEN
+
+These links are now local copies, and git ignores that local change
+(skip-worktree and .git/info/exclude), so it is never committed:
+ $hidden
+Until you undo this, git refuses to switch to a branch that does not have
+these links, and to pull a change to them. To undo:
+  bash install-prep.sh$named --undo-copies
+HIDDEN
 fi
 if [ -n "$kept" ]; then
   echo

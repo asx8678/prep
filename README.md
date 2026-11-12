@@ -109,8 +109,11 @@ your-repo/
 ├── .kiro/skills/prep    → link                          (Kiro CLI)
 ├── .kiro/skills/impl    → link
 └── .briefs/                         where the briefs are saved
-~/.briefs/                           optional task record: log.md, tasks/, skills/
 ```
+
+The installer writes only inside the repository. The optional task record in
+`~/.briefs/` (`log.md`, `tasks/`, `skills/`) is created by `/prep`, and only
+after you say yes at the end of one.
 
 Notes:
 
@@ -126,17 +129,27 @@ Notes:
   [`shipped-versions.txt`](shipped-versions.txt).
 - It only installs. It never removes your files or other skills, and it skips
   any link or folder in `.claude/skills` or `.kiro/skills` that it did not make.
-- Nothing is written to `~/.briefs/` until you say yes at the end of a `/prep`.
 - Commit `.agents/`, `.claude/skills` and `.kiro/skills` so your team gets the
   skills, and the briefs in `.briefs/` if the team should see them (git shows
   `.briefs/` only once it holds a brief).
 - A copy you changed (where links are not available) is kept too, with a
   message: copies are made from `.agents/skills/<name>/SKILL.md`, so change
   that file instead.
+- If `.claude/skills` or `.kiro/skills` is itself a link to a folder somewhere
+  else, a link inside it would not open, so the installer makes copies there.
 - On a clone without link support (the default on Windows), git checks out
-  the committed links as small text files. The installer replaces them with
-  copies and tells git to ignore that local change (`skip-worktree` and
-  `.git/info/exclude`), so the copies are never committed over the links.
+  the committed links as small text files, and Claude Code and Kiro cannot
+  load the skills through them. Pi is not affected. The installer leaves those
+  files alone and prints two choices:
+  1. Turn on link support, which is the clean way: on Windows turn on
+     Developer Mode, run `git config core.symlinks true`, delete the four
+     small files and check them out again, then run the installer again.
+  2. Run `bash install-prep.sh --copies`. It replaces the files with local
+     copies and tells git to ignore that change (`skip-worktree` and
+     `.git/info/exclude`), so the copies are never committed over the links.
+     Git then refuses to switch to a branch that does not have these links,
+     and to pull a change to them, until you run
+     `bash install-prep.sh --undo-copies`.
 - Older versions of the installer kept a changed file as `SKILL.md.bak`. If
   you have one, check it and delete it; the installer points it out.
 
@@ -445,12 +458,27 @@ and all of them are fixed:
   failed without a clear message in a repository with no commits.
 
 `/prep` reviews now also check where one part's output feeds another, because
-the brief-name bug sat between prep and impl. The installer passes 39 checks:
-no git, a subfolder, a second run, upgrades, your edits, copy mode, edited
-copies, copies from older installers, your own links and folders, a worktree,
-Windows line endings and Windows clones. Six more test the throwaway copy and
-the brief names, and eleven more the choice of tools (`bash install-prep.sh
-claude`, `--help`, an unknown name).
+the brief-name bug sat between prep and impl.
+
+A fifth review, of the fixed version, found that one of those fixes had a
+side effect: on a Windows clone the installer replaced the text-file links
+with copies by itself, and git then refused to switch to a branch without
+those links. It is now a choice you make (`--copies`), with an undo
+(`--undo-copies`), and the installer explains both. The same review found
+that the throwaway copy failed with three common git settings
+(`diff.noprefix`, `diff.external`, `color.ui=always`) and left a folder
+behind when it failed, that the installer wrote to `~/.briefs/` although it
+said it did not, and that a link inside a linked skills folder did not open.
+All are fixed.
+
+The installer and the commands in the skills pass 76 checks: no git, a
+subfolder, a second run, upgrades, your edits, copy mode, edited copies,
+copies from older installers, your own links and folders, a linked skills
+folder, a worktree, Windows line endings, Windows clones with `--copies` and
+`--undo-copies`, the choice of tools, unknown names and options, the throwaway
+copy and the brief names. Windows was simulated on Linux (git without link
+support, and an `ln` that copies as Git Bash does), not run on a real
+Windows machine.
 
 ## Limitations
 
@@ -487,8 +515,11 @@ rm -rf .agents/skills/prep .agents/skills/impl \
        .kiro/skills/prep .kiro/skills/impl
 ```
 
-Keep or delete `.briefs/` (your briefs) and `~/.briefs/` (your record) as you
-like.
+If you used `--copies` on a clone without link support, run
+`bash install-prep.sh --undo-copies` first, or git will not see that the links
+are gone. `.git/prep-install/` may hold a new version the installer kept for
+you; delete it too. Keep or delete `.briefs/` (your briefs) and `~/.briefs/`
+(your record) as you like.
 
 ## Ideas borrowed
 

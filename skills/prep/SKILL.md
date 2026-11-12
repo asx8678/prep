@@ -102,6 +102,11 @@ and docs are), the full home path, the commit and the dedicated skills:
 date +%Y-%m-%d-%H%M%S; echo "$HOME"; git rev-parse --short HEAD 2>/dev/null; ls "$HOME/.briefs/skills" 2>/dev/null || true
 ```
 
+If the folder is not a git repository (for example an uploaded file in a
+chat), the git commands in this skill fail there: search with `grep -rn`,
+try a fix on a `cp -R` copy in a folder from `mktemp -d`, and find the files
+a command changed with `find . -newer <a file you made just before it>`.
+
 Give the request a type name of two or three words, lowercase with hyphens,
 such as `fix-cves` or `add-load-balancer`. Then check whether a dedicated
 skill covers this kind of task, by meaning, against the folder names you just
@@ -131,7 +136,7 @@ Decide what the person wants back. For a change (fix, add, update, remove),
 the result is a brief. For a review, a diagnosis or a question (what is
 wrong, why does it fail, is it safe), nothing changes yet: the result is a
 checked report, built with steps 3 and 4 and sent as step 5 describes, and
-steps 6 to 10 are skipped.
+steps 6 to 10 wait until the person accepts a brief for the fixes.
 
 ### 3. Survey the code
 
@@ -146,10 +151,11 @@ commit that introduced it (`git show --stat <commit>`).
 Look for earlier work on the same problem, for example with
 `git log --oneline -n 20 -i --grep=<word>`,
 `git log --oneline -n 20 -S <name>` and, if your tool can see pull requests,
-`gh pr list --state all --search <word>`. A reverted or half-done attempt
-tells you what to avoid. When something surprises you, such as a disabled
-test, a TODO, a workaround or a recent revert, find out why before you plan
-around it.
+`gh pr list --state all --search <word>` (GitHub) or
+`az repos pr list --status all --top 50 --output table | grep -i <word>`
+(Azure DevOps). A reverted or half-done attempt tells you what to avoid.
+When something surprises you, such as a disabled test, a TODO, a workaround
+or a recent revert, find out why before you plan around it.
 
 Also find:
 
@@ -227,15 +233,19 @@ no untracked or ignored files such as `.env`, cuts the copy's link to the
 project so nothing can be pushed back, and prints where the copy is:
 
 ```
-r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && git clone -q "$r" "$d/try" &&
-git -C "$d/try" remote remove origin &&
-{ git -C "$r" diff --quiet HEAD || git -C "$r" diff HEAD --binary | git -C "$d/try" apply; } && echo "$d/try"
+r=$(git rev-parse --show-toplevel) && d=$(mktemp -d) && {
+  git clone -q "$r" "$d/try" && git -C "$d/try" remote remove origin &&
+  { git -C "$r" diff --quiet HEAD ||
+    git -C "$r" -c diff.noprefix=false diff HEAD --binary --no-ext-diff --no-textconv --no-color |
+    git -C "$d/try" apply; } &&
+  echo "$d/try" || { rm -rf "$d"; false; }; }
 ```
 
 Copy in any untracked file the trial needs. Make the change and run the
 proof there, record what it printed, then delete the folder `mktemp` made.
 If the command fails, for example because the project has no commits yet,
-say that the trial could not run; do not try it in the project instead.
+it removes its own folder: say that the trial could not run, and do not try
+it in the project instead.
 
 ### 5. Report and ask, in one message
 
@@ -248,7 +258,8 @@ For a review or a diagnosis, the message is the result. Put the findings
 first, most serious first, each with the command that shows it and what it
 printed (or UNVERIFIED), and the fix for each, tried in a throwaway copy
 where you could. Then say briefly what is good. Ask only what would change
-the findings, then offer a brief for the fixes and stop.
+the findings, then offer a brief for the fixes and stop. If the person
+accepts, the fixes become the change: go on with steps 6 to 10.
 
 For a change, send one message with these parts, in this order:
 
