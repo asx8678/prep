@@ -92,3 +92,7 @@ Status: open
 - Rename calc.py to arith.py
 - Add a triple(x) function
 EOF
+
+# What prep puts into .briefs/: git ignores the folder, so a search tool
+# finds nothing in it and impl has to list and read the files.
+printf '*\n' > .briefs/.gitignore

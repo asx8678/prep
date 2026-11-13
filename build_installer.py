@@ -495,10 +495,12 @@ cat <<DONE
 Done. The skills are in $root/.agents/skills
 (prep and impl). To change one, edit its SKILL.md there; running this
 again keeps your edits.
-Briefs go to .briefs/ in the project you run /prep in.
+Briefs go to .briefs/ in the project you run /prep in. /prep puts a
+.gitignore there, so git leaves them out until you delete that file.
 The record of tasks lives in ~/.briefs/ and is shared by every
-repository on this computer. Nothing is written there until you say yes
-at the end of a /prep.
+repository on this computer. Nothing is written there until you say
+"keep a record" at the end of a /prep. From then on it gets a log line
+and a copy of every brief you save, unless you say "no record".
 
 Use them
                 1. Prepare          2. Start fresh   3. Implement
@@ -547,9 +549,9 @@ if has claude; then cat <<'CLAUDE_GUARD'
                   claude --permission-mode manual
                 Approve tests, scanners and writes to the briefs folders;
                 decline anything else. The record step is one shell
-                command (cp and printf); approve it or answer A. To stop
-                the prompts for the briefs folders, add to
-                permissions.allow:
+                command (cp and printf); approve it, or say "no record"
+                when you accept the brief. To stop the prompts for the
+                briefs folders, add to permissions.allow:
                   in the project's .claude/settings.json
                     "Edit(/.briefs/**)"
                   in ~/.claude/settings.json
@@ -592,8 +594,9 @@ if [ "$scope" = repo ]; then
   cat <<COMMIT
 
 Commit $folders so the team gets the
-skills, and the briefs in .briefs/ if the team should see them (git shows
-.briefs/ only once it holds a brief). ~/.briefs/ stays on your computer.
+skills. Briefs stay out of commits, because /prep puts a .gitignore into
+.briefs/; delete that file if the team should see them. ~/.briefs/ stays
+on your computer.
 COMMIT
 fi
 }

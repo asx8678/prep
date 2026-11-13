@@ -48,4 +48,4 @@
 **What will be done:**
 1. `greet.py`: `greeting` gets an optional `shout` argument.
 
-"ok" saves the brief with record B. "full" shows the whole brief, which is in .briefs/draft.md. Or tell me what to change.
+"ok" saves the brief. "full" shows the whole brief, which is in .briefs/draft.md. Or tell me what to change.

@@ -18,7 +18,7 @@ shell="${BASH:-bash}"
 links_to="../../.agents/skills"
 # prep is already larger than the 5,000 tokens a skill should have, so a new
 # rule has to replace an old one. Raise this number only on purpose.
-max_prep_bytes=30321
+max_prep_bytes=32105
 
 work="$(mktemp -d)" || exit 1
 work="$(cd "$work" && pwd -P)"
@@ -411,6 +411,13 @@ expect "16 an ignored file does not" test "$s3" = "$s2"
 printf 'staged\n' > "$st/a.txt"; git -C "$st" add a.txt; s4="$(state "$st")"
 printf 'staged again\n' > "$st/a.txt"; git -C "$st" add a.txt; s5="$(state "$st")"
 refuse "16 a staged file that is changed and staged again changes the output" test "$s5" = "$s4"
+# With diff.relative, a plain `git diff` in a subfolder shows only that folder.
+mkdir "$st/sub"
+git config --global diff.relative true
+printf 'changed once more\n' > "$st/a.txt"; s6="$(state "$st/sub")"
+printf 'and once more\n' > "$st/a.txt"; s7="$(state "$st/sub")"
+git config --global --unset diff.relative
+refuse "16 with diff.relative, a change outside the subfolder it runs in changes the output" test "$s7" = "$s6"
 
 echo "== 17. prep's step 1 command (in the skill text)"
 code_block "^date " > "$work/start.sh"
@@ -426,6 +433,15 @@ same "17 the third line names the commit" "$(printf '%s\n' "$first" | sed -n 3p)
 same "17 outside git the commit line is empty" "$(cd "$work/nogit" && "$shell" "$work/start.sh" 2>/dev/null | sed -n 3p)" "commit: "
 same "17 a later run sorts after an earlier one" \
   "$(printf '%s\n%s\n' "$second" "$(printf '%s\n' "$first" | sed -n 1p)" | LC_ALL=C sort -u | tail -n 1)" "$second"
+same "17 without ~/.briefs the fourth line says the record is off" "$(printf '%s\n' "$first" | sed -n 4p)" "record: off"
+# The folder alone is not a yes: where the repository is the home folder,
+# the project's own .briefs/ is ~/.briefs/, and the installer makes it.
+mkdir -p "$HOME/.briefs/skills/fix-cves"
+same "17 with ~/.briefs but no log in it, the record is still off" "$(start | sed -n 4p)" "record: off"
+same "17 with ~/.briefs the dedicated skills follow" "$(start | sed -n 5p)" "fix-cves"
+: > "$HOME/.briefs/log.md"
+same "17 with a log in ~/.briefs it says the record is on" "$(start | sed -n 4p)" "record: on"
+rm -rf "$HOME/.briefs"
 
 echo "== 18. prep's command for an environment variable (in the skill text)"
 cmd="$(grep -o '`echo "\${NAME:+[^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
@@ -458,6 +474,42 @@ expect "20 the command is in prep's text" test -n "$cmd"
 printf 'region = "eu"\ndb_password = "dummy-secret-value"\n' > "$work/settings.conf"
 same "20 a secret's key that is set: prints only a count" \
   "$("$shell" -c "$(printf '%s' "$cmd" | sed "s|<key>|db_password|; s|<file>|$work/settings.conf|")" 2>&1)" 1
+# A search prints whole lines, so an untracked file that git does not ignore
+# and that may hold secrets has to be left out of it.
+cmd="$(grep -o '`git grep -n --untracked <word> -- [^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+expect "20 the search that leaves a file out is in prep's text" test -n "$cmd"
+new_repo; se="$r"
+printf 'TOKEN=dummy-secret-value\n' > "$se/.env"
+printf 'reads TOKEN\n' > "$se/notes.txt"
+same "20 a search that leaves out the secrets file finds only the other file" \
+  "$(cd "$se" && "$shell" -c "$(printf '%s' "$cmd" | sed "s|<word>|TOKEN|; s|<path>|.env|")" 2>&1)" "notes.txt:1:reads TOKEN"
+expect "20 the same search without that part would print the value" \
+  contains "$(cd "$se" && git grep -n --untracked TOKEN 2>&1)" dummy-secret-value
+# A committed file that holds secrets is printed just the same, and git
+# status does not list it.
+new_repo; com="$r"
+printf 'db_password = "dummy-secret-value"\n' > "$com/settings.conf"
+printf 'the password comes from db_password\n' > "$com/notes.txt"
+git -C "$com" add . && git -C "$com" commit -q -m settings
+same "20 the search leaves out a committed file in the same way" \
+  "$(cd "$com" && "$shell" -c "$(printf '%s' "$cmd" | sed "s|<word>|db_password|; s|<path>|settings.conf|")" 2>&1)" \
+  "notes.txt:1:the password comes from db_password"
+# In a subfolder, a search without :/ sees only that subfolder.
+mkdir "$se/sub"
+same "20 from a subfolder, the search that leaves a file out still finds the rest" \
+  "$(cd "$se/sub" && "$shell" -c "$(printf '%s' "$cmd" | sed "s|<word>|TOKEN|; s|<path>|../.env|")" 2>&1)" "../notes.txt:1:reads TOKEN"
+cmd="$(grep -o '`git grep -n --untracked <word> :/`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+expect "20 the search of the whole repository is in prep's text" test -n "$cmd"
+same "20 from a subfolder, that search finds a file outside it" \
+  "$(cd "$se/sub" && "$shell" -c "$(printf '%s' "$cmd" | sed "s|<word>|reads|")" 2>&1)" "../notes.txt:1:reads TOKEN"
+# Without git nothing skips .env, so the search itself has to.
+cmd="$(grep -o '`grep -rn --exclude=[^`]*`' "$repo/skills/prep/SKILL.md" | head -n 1 | tr -d '`')"
+expect "20 the search for a folder without git is in prep's text" test -n "$cmd"
+mkdir "$work/plain"
+printf 'TOKEN=dummy-secret-value\n' > "$work/plain/.env"
+printf 'reads TOKEN\n' > "$work/plain/notes.txt"
+same "20 without git, the search leaves out .env" \
+  "$(cd "$work/plain" && "$shell" -c "$cmd TOKEN ." 2>&1)" "./notes.txt:1:reads TOKEN"
 
 echo "== 21. A global install (--global)"
 new_home
@@ -670,17 +722,19 @@ server="http.server --bind 127.0.0.1 $port"
 # check_url FILE: runs the example for FILE on a local server; sets $rc. The
 # output goes to a file: a server left running would keep a pipe open, and
 # the test would wait for it instead of failing.
+# START, if set, replaces the command that starts the server.
 check_url() {
   ( cd "$work/site" && "$shell" -c "$(printf '%s' "$example" |
-    sed "s|<start>|python3 -m $server|; s|<url>|http://127.0.0.1:$port/$1|g")" ) > "$work/out" 2>&1
+    sed "s|<start>|${start:-python3 -m $server}|; s|<url>|http://127.0.0.1:$port/$1|g")" ) > "$work/out" 2>&1
   rc=$?
 }
-# no_server: waits until the server is gone, because kill does not wait for
-# it; fails when it still runs after 5 seconds. pgrep exits 1 when nothing
-# matches: any other failure, such as no pgrep at all, must not count as gone.
+# no_server [COMMAND]: waits until the server is gone, or the process with
+# COMMAND in its command line, because kill does not wait for it; fails when
+# it still runs after 5 seconds. pgrep exits 1 when nothing matches: any
+# other failure, such as no pgrep at all, must not count as gone.
 no_server() {
-  local tries=0
-  until pgrep -f "$server" > /dev/null 2>&1; [ $? -eq 1 ]; do
+  local tries=0 what="${1:-$server}"
+  until pgrep -f "$what" > /dev/null 2>&1; [ $? -eq 1 ]; do
     tries=$((tries + 1))
     [ "$tries" -lt 50 ] || return 1
     sleep 0.1
@@ -693,6 +747,72 @@ no_server
 check_url missing.txt
 refuse "27 with a URL that does not exist the check fails" test "$rc" -eq 0
 expect "27 no server is left running" no_server
+# A server started through a wrapper, as npm run dev does, is a child of the
+# process the example started; stopping only that process would leave it.
+start="sh -c 'python3 -m $server; true'"
+check_url ok.txt
+same "27 a server started through a wrapper: the check passes" "$rc" 0
+expect "27 a server started through a wrapper is not left running" no_server
+unset start
+# Every wait in the example has a time limit, so the check also ends by
+# itself when something takes the connection and never answers. With the
+# limits in the text that takes about 100 seconds, so the two checks below
+# run the example with its limits cut to seconds, and in the background: one
+# that never ends must fail here, not hold up the test.
+quick="$(printf '%s' "$example" | sed 's/ -m 5 / -m 1 /; s/ -m 10 / -m 1 /; s/--retry-max-time 90 /--retry-max-time 3 /')"
+shortened() { contains "$quick" "curl -s -m 1 " && contains "$quick" "curl -sf -m 1 " && contains "$quick" "--retry-max-time 3 "; }
+expect "27 (setup) the example has the three time limits that are cut here" shortened
+cat > "$work/silent.py" <<'PY'
+"""Listens on the port given, takes every connection and never answers."""
+import socket
+import sys
+
+listener = socket.socket()
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(("127.0.0.1", int(sys.argv[1])))
+listener.listen(16)
+taken = []
+while True:
+    taken.append(listener.accept()[0])
+PY
+# in_background NAME PORT START: runs the example with START and a URL on
+# PORT; once it has ended, its exit code is in $work/NAME.rc
+in_background() {
+  ( cd "$work/site" || exit
+    "$shell" -c "$(printf '%s' "$quick" | sed "s|<start>|$3|; s|<url>|http://127.0.0.1:$2/ok.txt|g")" > "$work/$1.out" 2>&1
+    echo $? > "$work/$1.rc" ) &
+}
+# ended NAME: waits until that check has ended, for 30 seconds at most
+ended() {
+  local tries=0
+  until [ -s "$work/$1.rc" ]; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 300 ] || return 1
+    sleep 0.1
+  done
+}
+held=$((port + 1)) unanswered=$((port + 2))
+# The listener that holds a port is the test's own, started like the server
+# further down. curl exits with 28 once it takes the connection and is silent.
+( exec python3 "$work/silent.py" "$held" > /dev/null 2>&1 & )
+tries=0
+until curl -s -m 1 -o /dev/null "http://127.0.0.1:$held/"; [ $? -eq 28 ] || [ "$tries" -ge 50 ]; do
+  tries=$((tries + 1))
+  sleep 0.1
+done
+in_background held "$held" "python3 -m http.server --bind 127.0.0.1 $held"
+in_background unanswered "$unanswered" "python3 $work/silent.py $unanswered"
+expect "27 with the port held by something that never answers, the check ends by itself" ended held
+refuse "27 and it does not pass" test "$(cat "$work/held.rc" 2> /dev/null)" = 0
+expect "27 with a server that takes the connection and never answers, the check ends by itself" ended unanswered
+refuse "27 and it does not pass" test "$(cat "$work/unanswered.rc" 2> /dev/null)" = 0
+expect "27 and that server is not left running" no_server "silent.py $unanswered"
+# This stops the test's own listener, and whatever a check that did not end
+# has left.
+pkill -f "silent.py $held"
+pkill -f "127.0.0.1:$held/ok.txt"
+pkill -f "127.0.0.1:$unanswered/ok.txt"
+pkill -f "silent.py $unanswered"
 # A server that was there before the check: the test's own, started outside
 # the script's jobs so that stopping it prints nothing.
 ( cd "$work/site" && exec python3 -m $server > /dev/null 2>&1 & )
@@ -935,6 +1055,37 @@ same "31 a message with its findings on top fails the two graders of the order" 
 same "31 the scaffold runs" "$?" 0
 ( cd "$work/short-approval" && python3 -m unittest ) > "$work/out" 2>&1
 same "31 the project's own tests pass as scaffolded" "$?" 0
+
+echo "== 32. The cases for a correction and for a risky request tell a good reply from a bad one"
+# The drafts and the replies are made up, as in 31.
+corr="$repo/evals/cases/correction-rechecked"
+mkdir -p "$work/correction/scaffolded"
+( cd "$work/correction/scaffolded" && "$shell" "$corr/scaffold.sh" ) > "$work/out" 2>&1
+same "32 correction-rechecked: the scaffold runs" "$?" 0
+for state in applied ignored; do
+  dir="$work/correction/$state"
+  { cp -R "$work/correction/scaffolded" "$dir" && cp -R "$repo/evals/selftest/correction-rechecked/$state/." "$dir/"; } 2> "$work/out"
+  case "$state" in applied) want=pass ;; *) want=fail ;; esac
+  same "32 correction-rechecked: a draft with the correction $state gets $want from the file graders" \
+    "$(cd "$dir" && python3 "$work/judge.py" graders "$corr" 2> "$work/out")" "$want"
+done
+same "32 correction-rechecked: a reply that asks again passes" \
+  "$(python3 "$work/judge.py" message "$corr" "$repo/evals/selftest/correction-rechecked/asks-again.md" 2> "$work/out")" \
+  "waits-before-saving=pass"
+same "32 correction-rechecked: a reply that saved the brief fails" \
+  "$(python3 "$work/judge.py" message "$corr" "$repo/evals/selftest/correction-rechecked/saved.md" 2> "$work/out")" \
+  "waits-before-saving=fail"
+risky="$repo/evals/cases/pushes-back"
+( mkdir -p "$work/pushes-back" && cd "$work/pushes-back" && "$shell" "$risky/scaffold.sh" ) > "$work/out" 2>&1
+same "32 pushes-back: the scaffold runs" "$?" 0
+( cd "$work/pushes-back" && python3 -m unittest ) > "$work/out" 2>&1
+same "32 pushes-back: the project's own tests pass as scaffolded" "$?" 0
+same "32 pushes-back: a reply that warns first passes" \
+  "$(python3 "$work/judge.py" message "$risky" "$repo/evals/selftest/pushes-back/warns.md" 2> "$work/out")" \
+  "warning-on-top=pass"
+same "32 pushes-back: a reply that plans the change as asked fails" \
+  "$(python3 "$work/judge.py" message "$risky" "$repo/evals/selftest/pushes-back/plans-as-asked.md" 2> "$work/out")" \
+  "warning-on-top=fail"
 
 printf '\n%d checks: %d passed, %d failed\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -34,13 +34,17 @@ first and implementation second. Both skills are plain Markdown:
    your project.
 3. **It reports in one message.** The first lines say what it found, what it
    asks and what `ok` starts; the evidence follows. Answer in one line:
-   `2 is wrong, 5B`, or `ok`.
+   `1B, 5 is wrong`, or `ok`.
 4. **You approve a short summary of the brief:** what will be done, what
    stays as it is, how it is proven and what is left for you. The brief waits
    in `.briefs/draft.md` and gets its dated name only after you accept or
-   correct it. On request, prep keeps a record in `~/.briefs/` (later preps
-   in any project may read it) and checks it for repeats: a kind of task that
-   comes back can get a dedicated skill.
+   correct it. Before the first brief, prep puts a `.gitignore` into
+   `.briefs/`, so briefs stay out of commits until you delete it. Say
+   `keep a record` once, and from then on prep keeps a log line and a copy of
+   every brief it saves in `~/.briefs/` (`no record` skips one task; delete
+   the folder to stop). Before it shows you a summary, prep reads the earlier
+   tasks of the same kind there, in any project, for what they missed; a kind
+   that comes back can get a dedicated skill.
 5. **`/impl` builds it.** It asks first when it is unclear which brief to
    use, and never commits, pushes or deploys unless you ask.
 

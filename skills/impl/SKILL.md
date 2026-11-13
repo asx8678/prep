@@ -13,13 +13,15 @@ their corrections.
 
 1. Find the brief. Use the file the person named after the command.
    Otherwise use the newest brief that is not done: of the files in
-   `.briefs/` whose names start with a date and time and whose Status is
-   not "done", the one that sorts last. Say in one line which file you use.
-   If there is none, say so and stop. If more than one such brief is not
-   done, or the one you would use is more than a day old and was not written
-   in this conversation, show the title, date and Status of each and wait
-   for the person to choose: an old brief may be abandoned, or someone
-   else's.
+   `.briefs/`, in the repository's top folder, whose names start with a
+   date and time and whose Status is not "done", the one that sorts last.
+   List them with `ls` and read each one's first lines: git usually ignores
+   `.briefs/`, and a search tool then finds nothing in it. Say in one line
+   which file you use. If there is none, say so and stop. If more than one
+   such brief is not done, or the one you would use is more than a day old
+   and was not written in this conversation, show the title, date and
+   Status of each and wait for the person to choose: an old brief may be
+   abandoned, or someone else's.
 2. Read the whole brief before you change anything. If its Status is "has
    open questions", show those questions and wait for the answers; then
    write them into the brief under Decisions (by: person) and set its
@@ -38,9 +40,11 @@ their corrections.
    test, write that test first and run it to see it fail for the reason the
    brief gives, then make the change.
 5. If something in the brief turns out to be wrong or impossible, stop and
-   tell the person what you found. Do not improvise around it. When you
-   need to know how something works, use the pages under Sources first,
-   then the official documentation. Do not guess.
+   tell the person what you found. Do not improvise around it. If the brief
+   ends with a record note, append its line as in step 8, with `stopped` in
+   place of `done` and what was wrong after `missed:`, so that a later prep
+   learns from it. When you need to know how something works, use the pages
+   under Sources first, then the official documentation. Do not guess.
 6. Run every Proof check meant for this session and compare each result
    with the baseline. If one fails, fix the code and run it again, at most
    three times for the same failure; then stop and explain. If the same

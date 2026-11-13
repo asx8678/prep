@@ -25,3 +25,6 @@ printf '# Greet\n\nTests: `python3 -m unittest`.\n' > README.md
 git init -q
 git add -A
 git -c user.name=t -c user.email=t@example.invalid commit -q -m "Greeting"
+# What the installer leaves in a repository: an empty .briefs/. prep still
+# has to put its .gitignore there (the briefs-ignored grader).
+mkdir -p .briefs

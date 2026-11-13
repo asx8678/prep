@@ -8,14 +8,8 @@
 **Risks:** none that cannot be undone; two files change.
 **Left for you afterwards:** commit and push.
 
-Keep a record of this task on this computer? A later prep, in any project, can then learn from it.
-- A. No.
-- B. Yes: a line in a log and a copy of the brief, in `~/.briefs/`.
-- C. Yes, and I read the earlier tasks of this kind now, to catch what they missed. A kind that keeps coming back can get its own skill.
-
-I recommend B: this looks like a one-off.
-
-"ok" saves the brief with record B. "full" shows the whole brief, which is in .briefs/draft.md. Or tell me what to change.
+"ok" saves the brief. "full" shows the whole brief, which is in .briefs/draft.md. Or tell me what to change.
+Say "keep a record" and I also keep a log line and a copy of this and later briefs in ~/.briefs/, where a later prep in any project can read them.
 
 ## Details
 1. `greet.py:1-3` holds the only definition of `greeting`; nothing else in the project calls it.
